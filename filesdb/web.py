@@ -107,3 +107,26 @@ def sha1(sha1_hash):
         return organize_files(cursor)
     finally:
         cursor.close()
+
+
+@app.route('/')
+def index():
+    return '''
+<!DOCTYPE html>
+<html>
+  <head>
+    <title>FilesDB</title>
+  </head>
+  <body>
+    <pre>File database for package managers
+
+Available endpoints:
+
+* /project/<project_name>: List files in the given project
+* /file/<file_prefix>: List files matching a given prefix, and the projects they come from
+* /sha1/<sha1_hash>: List files that have the given SHA1 hash, and the projects they come from</pre>
+
+    <a href="https://github.com/remram44/filesdb"><pre>https://github.com/remram44/filesdb</pre></a>
+  </body>
+</html>
+'''
