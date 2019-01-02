@@ -172,6 +172,7 @@ def process_project(args):
             ''',
             [name],
         )
+        db.commit()
 
     logger.info("Getting %s", release_file['url'])
     tmpdir = tempfile.mkdtemp()
