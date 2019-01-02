@@ -1,0 +1,13 @@
+stages:
+  - test
+  - deploy
+
+run_tests:
+  stage: test
+  image: python:3.6
+  script:
+    - curl -sSL https://raw.githubusercontent.com/sdispater/poetry/master/get-poetry.py | python && /root/.poetry/bin/poetry config settings.virtualenvs.create false
+    - $HOME/.poetry/bin/poetry install --no-interaction
+    - python -m readme_renderer README.rst >/dev/null
+    #- python tests.py
+    - flake8 --ignore=W504 filesdb # tests.py
