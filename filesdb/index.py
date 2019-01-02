@@ -1,5 +1,6 @@
 from concurrent.futures import ThreadPoolExecutor
 from hashlib import sha1
+import itertools
 import logging
 import os
 import re
@@ -8,11 +9,30 @@ import shutil
 import sqlite3
 import tarfile
 import tempfile
+import time
 import threading
 import zipfile
 
 
 logger = logging.getLogger(__name__)
+
+
+def url_get(url, stream=False, retry=True, ok404=False):
+    wait = 2
+    attempts = 5 if retry else 1
+    for i in itertools.count(1):
+        try:
+            r = requests.get(url, stream=stream)
+            if ok404 and r.status_code == 404:
+                return r
+            r.raise_for_status()
+            return r
+        except requests.RequestException as e:
+            if i == attempts:
+                raise
+            logger.error("Request error (%d/%d): %r", i, attempts, e)
+            time.sleep(wait)
+            wait *= 2
 
 
 re_project = re.compile(r'<a href="\/simple\/([^"]+)\/">([^<]+)</a>')
@@ -55,22 +75,24 @@ def main():
 
     threads = ThreadPoolExecutor(8)
 
-    page = requests.get('https://pypi.org/simple/')
-    page.raise_for_status()
-    page = page.text
-    threads.map(process_project, (db, db_mutex, m
-                                  for m in re_project.finditer(page)))
+    page = url_get('https://pypi.org/simple/').text
+    for _ in threads.map(process_project, ((db, db_mutex, m)
+                                           for m in re_project.finditer(page))):
+        pass
 
     db.close()
 
 
-def process_project(db, db_mutex, m):
+def process_project(args):
+    db, db_mutex, m = args
+
     name = m.group(2)
     link = m.group(1)
 
     logger.info("Processing %s", name)
 
-    json_info = requests.get('https://pypi.org/pypi/{}/json'.format(link))
+    json_info = url_get('https://pypi.org/pypi/{}/json'.format(link),
+                        ok404=True)
     if json_info.status_code == 404:
         logger.warning("JSON 404")
         return
@@ -121,8 +143,7 @@ def process_project(db, db_mutex, m):
     logger.info("Getting %s", release_file['url'])
     tmpdir = tempfile.mkdtemp()
     try:
-        with requests.get(release_file['url'], stream=True) as download:
-            download.raise_for_status()
+        with url_get(release_file['url'], stream=True) as download:
             tmpfile = os.path.join(
                 tmpdir,
                 release_file['filename'].replace('/', '-'),
