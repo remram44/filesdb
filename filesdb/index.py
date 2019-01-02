@@ -54,13 +54,16 @@ def main():
         logger.info("Processing %s", name)
 
         json_info = requests.get('https://pypi.org/pypi/{}/json'.format(link))
+        if json_info.status_code == 404:
+            logger.warning("JSON 404")
+            continue
         json_info.raise_for_status()
         json_info = json_info.json()
 
         releases = sorted(json_info['releases'].items(),
                           key=lambda p: p[0],
                           reverse=True)
-        if not releases:
+        if not releases or not releases[0][1]:
             logger.warning("Project %s has no releases", name)
             continue
 
