@@ -19,6 +19,7 @@ classifiers = [
 
 [tool.poetry.dependencies]
 python = "^3.5.3"
+Flask = "*"
 requests = "*"
 
 [tool.poetry.dev-dependencies]

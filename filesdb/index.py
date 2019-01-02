@@ -74,7 +74,6 @@ def main():
     db_exists = os.path.exists('projects.sqlite3')
     db = sqlite3.connect('projects.sqlite3', check_same_thread=False)
     db_mutex = threading.Lock()
-    db.isolation_level = 'EXCLUSIVE'
     if not db_exists:
         for statement in schema:
             db.execute(statement)
