@@ -53,9 +53,9 @@ schema = [
         sha1 VARCHAR(41)
     );
     ''',
-    '''CREATE INDEX files-idx-project ON files(project);''',
-    '''CREATE INDEX files-idx-filename ON files(filename);''',
-    '''CREATE INDEX files-idx-sha1 ON files(sha1);''',
+    '''CREATE INDEX files_idx_project ON files(project);''',
+    '''CREATE INDEX files_idx_filename ON files(filename);''',
+    '''CREATE INDEX files_idx_sha1 ON files(sha1);''',
     '''
     CREATE TABLE python_imports(
         project VARCHAR(100) PRIMARY KEY,
@@ -63,7 +63,7 @@ schema = [
     );
     ''',
     '''
-    CREATE INDEX python_imports-idx-import_name
+    CREATE INDEX python_imports_idx_import_name
     ON python_imports(import_name);
     ''',
 ]
