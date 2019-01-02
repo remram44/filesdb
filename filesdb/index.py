@@ -40,9 +40,15 @@ re_project = re.compile(r'<a href="/simple/([^"]+)/">([^<]+)</a>')
 
 schema = [
     '''
+    CREATE TABLE projects(
+        project VARCHAR(100) PRIMARY KEY,
+        version VARCHAR(50),
+        archive VARCHAR(255)
+    );
+    ''',
+    '''
     CREATE TABLE files(
         project VARCHAR(100),
-        version VARCHAR(50),
         filename VARCHAR(255),
         sha1 VARCHAR(41)
     );
@@ -53,7 +59,6 @@ schema = [
     '''
     CREATE TABLE python_imports(
         project VARCHAR(100) PRIMARY KEY,
-        version VARCHAR(50),
         import_name VARCHAR(50)
     );
     ''',
@@ -109,25 +114,6 @@ def process_project(args):
 
     version, release_files = releases[0]
 
-    # Check if project is up to date
-    with db_mutex:
-        cur = db.execute(
-            '''
-            SELECT version FROM files
-            WHERE project=?;
-            ''',
-            [name],
-        )
-        try:
-            version_in_db = next(cur)[0]
-            cur.close()
-        except StopIteration:
-            cur.close()
-        else:
-            if version_in_db == version:
-                logger.info("Project %s is up to date", name)
-                return
-
     # Prefer a wheel
     for release_file in release_files:
         if release_file['packagetype'] == 'bdist_wheel':
@@ -141,6 +127,25 @@ def process_project(args):
             logger.error("Couldn't find a suitable file!")
             return
 
+    # Check if project is up to date
+    with db_mutex:
+        cur = db.execute(
+            '''
+            SELECT archive FROM projects
+            WHERE project=?;
+            ''',
+            [name],
+        )
+        try:
+            archive_in_db = next(cur)[0]
+            cur.close()
+        except StopIteration:
+            cur.close()
+        else:
+            if archive_in_db == release_file['filename']:
+                logger.info("Project %s is up to date", name)
+                return
+
     logger.info("Getting %s", release_file['url'])
     tmpdir = tempfile.mkdtemp()
     try:
@@ -153,12 +158,30 @@ def process_project(args):
                 for chunk in download.iter_content(4096):
                     if chunk:
                         fp.write(chunk)
-            process_archive(db, db_mutex, name, version, tmpfile)
+            process_archive(db, db_mutex, name, tmpfile)
     finally:
         shutil.rmtree(tmpdir)
 
+    # Update database
+    with db_mutex:
+        db.execute(
+            '''
+            DELETE FROM projects
+            WHERE project=?;
+            ''',
+            [name],
+        )
+        db.execute(
+            '''
+            INSERT INTO projects(project, version, archive)
+            VALUES(?, ?, ?);
+            ''',
+            [name, version, release_file['filename']],
+        )
+        db.commit()
 
-def process_archive(db, db_mutex, project, version, filename):
+
+def process_archive(db, db_mutex, project, filename):
     try:
         if filename.endswith('.whl'):
             with zipfile.ZipFile(filename) as zip:
@@ -167,8 +190,7 @@ def process_archive(db, db_mutex, project, version, filename):
                             member.endswith('.dist-info')):
                         continue
                     with zip.open(member) as fp:
-                        process_file(db, db_mutex,
-                                     project, version, member, fp)
+                        process_file(db, db_mutex, project, member, fp)
         elif filename.endswith('.zip'):
             with zipfile.ZipFile(filename) as zip:
                 for member in zip.infolist():
@@ -194,8 +216,7 @@ def process_archive(db, db_mutex, project, version, filename):
                         return
                     member_name = member.filename[idx + 1:]
                     with zip.open(member) as fp:
-                        process_file(db, db_mutex, project, version,
-                                     member_name, fp)
+                        process_file(db, db_mutex, project, member_name, fp)
         else:
             with tarfile.open(filename, 'r:*') as tar:
                 for member in tar.getmembers():
@@ -221,13 +242,12 @@ def process_archive(db, db_mutex, project, version, filename):
                         return
                     member_name = member.name[idx + 1:]
                     with tar.extractfile(member) as fp:
-                        process_file(db, db_mutex, project, version,
-                                     member_name, fp)
+                        process_file(db, db_mutex, project, member_name, fp)
     except (tarfile.TarError, zipfile.BadZipFile):
         logger.error("Error reading %s as an archive", filename)
 
 
-def process_file(db, db_mutex, project, version, filename, fp):
+def process_file(db, db_mutex, project, filename, fp):
     # Compute hash
     h = sha1()
     chunk = fp.read(4096)
@@ -257,10 +277,10 @@ def process_file(db, db_mutex, project, version, filename, fp):
         # Insert file into database
         db.execute(
             '''
-            INSERT INTO files(project, version, filename, sha1)
-            VALUES(?, ?, ?, ?);
+            INSERT INTO files(project, filename, sha1)
+            VALUES(?, ?, ?);
             ''',
-            [project, version, filename, h.hexdigest()],
+            [project, filename, h.hexdigest()],
         )
 
         # Guess Python package name
@@ -272,11 +292,13 @@ def process_file(db, db_mutex, project, version, filename, fp):
                 package_name = filename[:-3]
             db.execute(
                 '''
-                INSERT OR IGNORE INTO python_imports(project, version, import_name)
-                VALUES(?, ?, ?);
+                INSERT OR IGNORE INTO python_imports(project, import_name)
+                VALUES(?, ?);
                 ''',
-                [project, version, package_name],
+                [project, package_name],
             )
+
+        db.commit()
 
 
 if __name__ == '__main__':
