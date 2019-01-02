@@ -124,6 +124,28 @@ def process_archive(db, project, version, filename):
                     continue
                 with zip.open(member) as fp:
                     record(db, project, version, member, fp)
+    elif filename.endswith('.zip'):
+        with zipfile.ZipFile(filename) as zip:
+            for member in zip.infolist():
+                if member.is_dir():
+                    continue
+                assert member.filename.startswith(project)
+                if ('.egg-info/' in member.filename or
+                        member.filename.endswith('.egg-info') or
+                        member.filename == 'PKG-INFO' or
+                        member.filename == 'MANIFEST.in' or
+                        member.filename == 'setup.cfg'):
+                    continue
+                try:
+                    idx = member.filename.index('/')
+                except ValueError:
+                    logger.error("File %s from project %s doesn't have the "
+                                 "expected top-level directory",
+                                 member.filename, project)
+                    return
+                member_name = member.filename[idx + 1:]
+                with zip.open(member) as fp:
+                    record(db, project, version, member_name, fp)
     else:
         with tarfile.open(filename, 'r:*') as tar:
             for member in tar.getmembers():
