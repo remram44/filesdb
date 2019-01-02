@@ -89,8 +89,13 @@ def main():
             if release_file['packagetype'] == 'bdist_wheel':
                 break
         else:
-            release_file = release_files[0]
-            assert release_file['packagetype'] == 'sdist'
+            # Else, sdist
+            for release_file in release_files:
+                if release_file['packagetype'] == 'sdist':
+                    break
+            else:
+                logger.error("Couldn't find a suitable file!")
+                continue
 
         logger.info("Getting %s", release_file['url'])
         tmpdir = tempfile.mkdtemp()
