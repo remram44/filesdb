@@ -131,7 +131,11 @@ def process_archive(db, project, version, filename):
             for member in zip.infolist():
                 if member.filename.endswith('/'):  # Directory
                     continue
-                assert member.filename.startswith(project)
+                if not member.filename.startswith(project):
+                    logger.error("File %s from project %s doesn't have the "
+                                 "expected top-level directory",
+                                 member.filename, project)
+                    return
                 if ('.egg-info/' in member.filename or
                         member.filename.endswith('.egg-info') or
                         member.filename == 'PKG-INFO' or
@@ -153,7 +157,11 @@ def process_archive(db, project, version, filename):
             for member in tar.getmembers():
                 if not member.isfile():
                     continue
-                assert member.name.startswith(project)
+                if not member.name.startswith(project):
+                    logger.error("File %s from project %s doesn't have the "
+                                 "expected top-level directory",
+                                 member.name, project)
+                    return
                 if ('.egg-info/' in member.name or
                         member.name.endswith('.egg-info') or
                         member.name == 'PKG-INFO' or
