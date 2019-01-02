@@ -117,7 +117,7 @@ def process_project(args):
     # Select one of the archives
     for release_file in release_files:
         if release_file['packagetype'] == 'bdist_wheel':
-            if not 'python_version' in release_file:
+            if 'python_version' not in release_file:
                 release_file['_filesdb_priority'] = 4
             elif 'py2' in release_file['python_version']:
                 release_file['_filesdb_priority'] = 5

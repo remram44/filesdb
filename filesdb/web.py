@@ -111,7 +111,7 @@ def sha1(sha1_hash):
 
 @app.route('/')
 def index():
-    return '''
+    return '''\
 <!DOCTYPE html>
 <html>
   <head>
@@ -123,10 +123,14 @@ def index():
 Available endpoints:
 
 * /project/<project_name>: List files in the given project
-* /file/<file_prefix>: List files matching a given prefix, and the projects they come from
-* /sha1/<sha1_hash>: List files that have the given SHA1 hash, and the projects they come from</pre>
+* /file/<file_prefix>: List files matching a given prefix, and the projects
+  they come from
+* /sha1/<sha1_hash>: List files that have the given SHA1 hash, and the projects
+  they come from</pre>
 
-    <a href="https://github.com/remram44/filesdb"><pre>https://github.com/remram44/filesdb</pre></a>
+    <a href="https://github.com/remram44/filesdb">
+      <pre>https://github.com/remram44/filesdb</pre>
+    </a>
   </body>
 </html>
 '''
