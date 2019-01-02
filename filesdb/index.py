@@ -146,6 +146,22 @@ def process_project(args):
                 logger.info("Project %s is up to date", name)
                 return
 
+        # Remove old versions from database
+        db.execute(
+            '''
+            DELETE FROM files
+            WHERE project=?;
+            ''',
+            [name],
+        )
+        db.execute(
+            '''
+            DELETE FROM python_imports
+            WHERE project=?;
+            ''',
+            [name],
+        )
+
     logger.info("Getting %s", release_file['url'])
     tmpdir = tempfile.mkdtemp()
     try:
@@ -258,22 +274,6 @@ def process_file(db, db_mutex, project, filename, fp):
         h.update(chunk)
 
     with db_mutex:
-        # Remove old versions from database
-        db.execute(
-            '''
-            DELETE FROM files
-            WHERE project=?;
-            ''',
-            [project],
-        )
-        db.execute(
-            '''
-            DELETE FROM python_imports
-            WHERE project=?;
-            ''',
-            [project],
-        )
-
         # Insert file into database
         db.execute(
             '''
