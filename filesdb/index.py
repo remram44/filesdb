@@ -198,13 +198,17 @@ def process_project(args):
         db.commit()
 
 
+IGNORED_FILES = ('PKG-INFO', 'MANIFEST.in', 'setup.cfg')
+
+
 def process_archive(db, db_mutex, project, filename):
     try:
         if filename.endswith('.whl'):
             with zipfile.ZipFile(filename) as zip:
                 for member in zip.namelist():
                     if ('.dist-info/' in member or
-                            member.endswith('.dist-info')):
+                            member.endswith('.dist-info') or
+                            member in IGNORED_FILES):
                         continue
                     with zip.open(member) as fp:
                         process_file(db, db_mutex, project, member, fp)
@@ -220,9 +224,7 @@ def process_archive(db, db_mutex, project, filename):
                         return
                     if ('.egg-info/' in member.filename or
                             member.filename.endswith('.egg-info') or
-                            member.filename == 'PKG-INFO' or
-                            member.filename == 'MANIFEST.in' or
-                            member.filename == 'setup.cfg'):
+                            member.filename in IGNORED_FILES):
                         continue
                     try:
                         idx = member.filename.index('/')
@@ -232,6 +234,8 @@ def process_archive(db, db_mutex, project, filename):
                                      member.filename, project)
                         return
                     member_name = member.filename[idx + 1:]
+                    if member_name in IGNORED_FILES:
+                        continue
                     with zip.open(member) as fp:
                         process_file(db, db_mutex, project, member_name, fp)
         else:
@@ -247,8 +251,7 @@ def process_archive(db, db_mutex, project, filename):
                     if ('.egg-info/' in member.name or
                             member.name.endswith('.egg-info') or
                             member.name == 'PKG-INFO' or
-                            member.name == 'MANIFEST.in' or
-                            member.name == 'setup.cfg'):
+                            member.name in IGNORED_FILES):
                         continue
                     try:
                         idx = member.name.index('/')
@@ -258,6 +261,8 @@ def process_archive(db, db_mutex, project, filename):
                                      member.name, project)
                         return
                     member_name = member.name[idx + 1:]
+                    if member_name in IGNORED_FILES:
+                        continue
                     with tar.extractfile(member) as fp:
                         process_file(db, db_mutex, project, member_name, fp)
     except (tarfile.TarError, zipfile.BadZipFile):
