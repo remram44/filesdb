@@ -35,7 +35,7 @@ def url_get(url, stream=False, retry=True, ok404=False):
             wait *= 2
 
 
-re_project = re.compile(r'<a href="\/simple\/([^"]+)\/">([^<]+)</a>')
+re_project = re.compile(r'<a href="/simple/([^"]+)/">([^<]+)</a>')
 
 
 schema = [
@@ -76,8 +76,9 @@ def main():
     threads = ThreadPoolExecutor(8)
 
     page = url_get('https://pypi.org/simple/').text
-    for _ in threads.map(process_project, ((db, db_mutex, m)
-                                           for m in re_project.finditer(page))):
+    for _ in threads.map(process_project,
+                         ((db, db_mutex, m)
+                          for m in re_project.finditer(page))):
         pass
 
     db.close()
