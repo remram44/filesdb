@@ -128,65 +128,69 @@ def main():
 
 
 def process_archive(db, project, version, filename):
-    if filename.endswith('.whl'):
-        with zipfile.ZipFile(filename) as zip:
-            for member in zip.namelist():
-                if '.dist-info/' in member or member.endswith('.dist-info'):
-                    continue
-                with zip.open(member) as fp:
-                    record(db, project, version, member, fp)
-    elif filename.endswith('.zip'):
-        with zipfile.ZipFile(filename) as zip:
-            for member in zip.infolist():
-                if member.filename.endswith('/'):  # Directory
-                    continue
-                if not member.filename.startswith(project):
-                    logger.error("File %s from project %s doesn't have the "
-                                 "expected top-level directory",
-                                 member.filename, project)
-                    return
-                if ('.egg-info/' in member.filename or
-                        member.filename.endswith('.egg-info') or
-                        member.filename == 'PKG-INFO' or
-                        member.filename == 'MANIFEST.in' or
-                        member.filename == 'setup.cfg'):
-                    continue
-                try:
-                    idx = member.filename.index('/')
-                except ValueError:
-                    logger.error("File %s from project %s doesn't have the "
-                                 "expected top-level directory",
-                                 member.filename, project)
-                    return
-                member_name = member.filename[idx + 1:]
-                with zip.open(member) as fp:
-                    record(db, project, version, member_name, fp)
-    else:
-        with tarfile.open(filename, 'r:*') as tar:
-            for member in tar.getmembers():
-                if not member.isfile():
-                    continue
-                if not member.name.startswith(project):
-                    logger.error("File %s from project %s doesn't have the "
-                                 "expected top-level directory",
-                                 member.name, project)
-                    return
-                if ('.egg-info/' in member.name or
-                        member.name.endswith('.egg-info') or
-                        member.name == 'PKG-INFO' or
-                        member.name == 'MANIFEST.in' or
-                        member.name == 'setup.cfg'):
-                    continue
-                try:
-                    idx = member.name.index('/')
-                except ValueError:
-                    logger.error("File %s from project %s doesn't have the "
-                                 "expected top-level directory",
-                                 member.name, project)
-                    return
-                member_name = member.name[idx + 1:]
-                with tar.extractfile(member) as fp:
-                    record(db, project, version, member_name, fp)
+    try:
+        if filename.endswith('.whl'):
+            with zipfile.ZipFile(filename) as zip:
+                for member in zip.namelist():
+                    if ('.dist-info/' in member or
+                            member.endswith('.dist-info')):
+                        continue
+                    with zip.open(member) as fp:
+                        record(db, project, version, member, fp)
+        elif filename.endswith('.zip'):
+            with zipfile.ZipFile(filename) as zip:
+                for member in zip.infolist():
+                    if member.filename.endswith('/'):  # Directory
+                        continue
+                    if not member.filename.startswith(project):
+                        logger.error("File %s from project %s doesn't have "
+                                     "the expected top-level directory",
+                                     member.filename, project)
+                        return
+                    if ('.egg-info/' in member.filename or
+                            member.filename.endswith('.egg-info') or
+                            member.filename == 'PKG-INFO' or
+                            member.filename == 'MANIFEST.in' or
+                            member.filename == 'setup.cfg'):
+                        continue
+                    try:
+                        idx = member.filename.index('/')
+                    except ValueError:
+                        logger.error("File %s from project %s doesn't have "
+                                     "the expected top-level directory",
+                                     member.filename, project)
+                        return
+                    member_name = member.filename[idx + 1:]
+                    with zip.open(member) as fp:
+                        record(db, project, version, member_name, fp)
+        else:
+            with tarfile.open(filename, 'r:*') as tar:
+                for member in tar.getmembers():
+                    if not member.isfile():
+                        continue
+                    if not member.name.startswith(project):
+                        logger.error("File %s from project %s doesn't have "
+                                     "the expected top-level directory",
+                                     member.name, project)
+                        return
+                    if ('.egg-info/' in member.name or
+                            member.name.endswith('.egg-info') or
+                            member.name == 'PKG-INFO' or
+                            member.name == 'MANIFEST.in' or
+                            member.name == 'setup.cfg'):
+                        continue
+                    try:
+                        idx = member.name.index('/')
+                    except ValueError:
+                        logger.error("File %s from project %s doesn't have "
+                                     "the expected top-level directory",
+                                     member.name, project)
+                        return
+                    member_name = member.name[idx + 1:]
+                    with tar.extractfile(member) as fp:
+                        record(db, project, version, member_name, fp)
+    except (tarfile.TarError, zipfile.BadZipFile):
+        logger.error("Error reading %s as an archive", filename)
 
 
 def record(db, project, version, filename, fp):
