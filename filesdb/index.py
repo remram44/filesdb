@@ -206,9 +206,10 @@ def record(db, project, version, filename, fp):
     )
 
     # Guess Python package name
-    if filename.endswith('.py'):
+    if (filename.endswith('.py') and
+            filename not in ('test.py', 'tests.py', 'setup.py')):
         if '/' in filename:
-            package_name = filename[:filename.index('/') - 1]
+            package_name = filename[:filename.index('/')]
         else:
             package_name = filename[:-3]
         db.execute(
