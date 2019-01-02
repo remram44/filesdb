@@ -133,7 +133,7 @@ def process_project(args):
             logger.error("Unknown package type %r",
                          release_file['packagetype'])
     release_file = sorted(release_files,
-                          key=lambda r: r['_filesdb_priority'],
+                          key=lambda r: r.get('_filesdb_priority', 0),
                           reverse=True)[0]
 
     # Check if project is up to date
