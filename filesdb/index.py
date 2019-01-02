@@ -1,3 +1,4 @@
+from concurrent.futures import ThreadPoolExecutor
 from hashlib import sha1
 import logging
 import os
@@ -7,6 +8,7 @@ import shutil
 import sqlite3
 import tarfile
 import tempfile
+import threading
 import zipfile
 
 
@@ -44,38 +46,48 @@ schema = [
 
 def main():
     db_exists = os.path.exists('projects.sqlite3')
-    db = sqlite3.connect('projects.sqlite3')
+    db = sqlite3.connect('projects.sqlite3', check_same_thread=False)
+    db_mutex = threading.Lock()
     db.isolation_level = 'EXCLUSIVE'
     if not db_exists:
         for statement in schema:
             db.execute(statement)
 
+    threads = ThreadPoolExecutor(8)
+
     page = requests.get('https://pypi.org/simple/')
     page.raise_for_status()
     page = page.text
-    for m in re_project.finditer(page):
-        name = m.group(2)
-        link = m.group(1)
+    threads.map(process_project, (db, db_mutex, m
+                                  for m in re_project.finditer(page)))
 
-        logger.info("Processing %s", name)
+    db.close()
 
-        json_info = requests.get('https://pypi.org/pypi/{}/json'.format(link))
-        if json_info.status_code == 404:
-            logger.warning("JSON 404")
-            continue
-        json_info.raise_for_status()
-        json_info = json_info.json()
 
-        releases = sorted(json_info['releases'].items(),
-                          key=lambda p: p[0],
-                          reverse=True)
-        if not releases or not releases[0][1]:
-            logger.warning("Project %s has no releases", name)
-            continue
+def process_project(db, db_mutex, m):
+    name = m.group(2)
+    link = m.group(1)
 
-        version, release_files = releases[0]
+    logger.info("Processing %s", name)
 
-        # Check if project is up to date
+    json_info = requests.get('https://pypi.org/pypi/{}/json'.format(link))
+    if json_info.status_code == 404:
+        logger.warning("JSON 404")
+        return
+    json_info.raise_for_status()
+    json_info = json_info.json()
+
+    releases = sorted(json_info['releases'].items(),
+                      key=lambda p: p[0],
+                      reverse=True)
+    if not releases or not releases[0][1]:
+        logger.warning("Project %s has no releases", name)
+        return
+
+    version, release_files = releases[0]
+
+    # Check if project is up to date
+    with db_mutex:
         cur = db.execute(
             '''
             SELECT version FROM files
@@ -91,44 +103,40 @@ def main():
         else:
             if version_in_db == version:
                 logger.info("Project %s is up to date", name)
-                continue
+                return
 
-        # Prefer a wheel
+    # Prefer a wheel
+    for release_file in release_files:
+        if release_file['packagetype'] == 'bdist_wheel':
+            break
+    else:
+        # Else, sdist
         for release_file in release_files:
-            if release_file['packagetype'] == 'bdist_wheel':
+            if release_file['packagetype'] == 'sdist':
                 break
         else:
-            # Else, sdist
-            for release_file in release_files:
-                if release_file['packagetype'] == 'sdist':
-                    break
-            else:
-                logger.error("Couldn't find a suitable file!")
-                continue
+            logger.error("Couldn't find a suitable file!")
+            return
 
-        logger.info("Getting %s", release_file['url'])
-        tmpdir = tempfile.mkdtemp()
-        try:
-            with requests.get(release_file['url'], stream=True) as download:
-                download.raise_for_status()
-                tmpfile = os.path.join(
-                    tmpdir,
-                    release_file['filename'].replace('/', '-'),
-                )
-                with open(tmpfile, 'wb') as fp:
-                    for chunk in download.iter_content(4096):
-                        if chunk:
-                            fp.write(chunk)
-                process_archive(db, name, version, tmpfile)
-        finally:
-            shutil.rmtree(tmpdir)
-
-        db.commit()
-
-    db.close()
+    logger.info("Getting %s", release_file['url'])
+    tmpdir = tempfile.mkdtemp()
+    try:
+        with requests.get(release_file['url'], stream=True) as download:
+            download.raise_for_status()
+            tmpfile = os.path.join(
+                tmpdir,
+                release_file['filename'].replace('/', '-'),
+            )
+            with open(tmpfile, 'wb') as fp:
+                for chunk in download.iter_content(4096):
+                    if chunk:
+                        fp.write(chunk)
+            process_archive(db, db_mutex, name, version, tmpfile)
+    finally:
+        shutil.rmtree(tmpdir)
 
 
-def process_archive(db, project, version, filename):
+def process_archive(db, db_mutex, project, version, filename):
     try:
         if filename.endswith('.whl'):
             with zipfile.ZipFile(filename) as zip:
@@ -137,7 +145,8 @@ def process_archive(db, project, version, filename):
                             member.endswith('.dist-info')):
                         continue
                     with zip.open(member) as fp:
-                        record(db, project, version, member, fp)
+                        process_file(db, db_mutex,
+                                     project, version, member, fp)
         elif filename.endswith('.zip'):
             with zipfile.ZipFile(filename) as zip:
                 for member in zip.infolist():
@@ -163,7 +172,8 @@ def process_archive(db, project, version, filename):
                         return
                     member_name = member.filename[idx + 1:]
                     with zip.open(member) as fp:
-                        record(db, project, version, member_name, fp)
+                        process_file(db, db_mutex, project, version,
+                                     member_name, fp)
         else:
             with tarfile.open(filename, 'r:*') as tar:
                 for member in tar.getmembers():
@@ -189,12 +199,13 @@ def process_archive(db, project, version, filename):
                         return
                     member_name = member.name[idx + 1:]
                     with tar.extractfile(member) as fp:
-                        record(db, project, version, member_name, fp)
+                        process_file(db, db_mutex, project, version,
+                                     member_name, fp)
     except (tarfile.TarError, zipfile.BadZipFile):
         logger.error("Error reading %s as an archive", filename)
 
 
-def record(db, project, version, filename, fp):
+def process_file(db, db_mutex, project, version, filename, fp):
     # Compute hash
     h = sha1()
     chunk = fp.read(4096)
@@ -204,45 +215,46 @@ def record(db, project, version, filename, fp):
     if chunk:
         h.update(chunk)
 
-    # Remove old versions from database
-    db.execute(
-        '''
-        DELETE FROM files
-        WHERE project=?;
-        ''',
-        [project],
-    )
-    db.execute(
-        '''
-        DELETE FROM python_imports
-        WHERE project=?;
-        ''',
-        [project],
-    )
-
-    # Insert file into database
-    db.execute(
-        '''
-        INSERT INTO files(project, version, filename, sha1)
-        VALUES(?, ?, ?, ?);
-        ''',
-        [project, version, filename, h.hexdigest()],
-    )
-
-    # Guess Python package name
-    if (filename.endswith('.py') and
-            filename not in ('test.py', 'tests.py', 'setup.py')):
-        if '/' in filename:
-            package_name = filename[:filename.index('/')]
-        else:
-            package_name = filename[:-3]
+    with db_mutex:
+        # Remove old versions from database
         db.execute(
             '''
-            INSERT OR IGNORE INTO python_imports(project, version, import_name)
-            VALUES(?, ?, ?);
+            DELETE FROM files
+            WHERE project=?;
             ''',
-            [project, version, package_name],
+            [project],
         )
+        db.execute(
+            '''
+            DELETE FROM python_imports
+            WHERE project=?;
+            ''',
+            [project],
+        )
+
+        # Insert file into database
+        db.execute(
+            '''
+            INSERT INTO files(project, version, filename, sha1)
+            VALUES(?, ?, ?, ?);
+            ''',
+            [project, version, filename, h.hexdigest()],
+        )
+
+        # Guess Python package name
+        if (filename.endswith('.py') and
+                filename not in ('test.py', 'tests.py', 'setup.py')):
+            if '/' in filename:
+                package_name = filename[:filename.index('/')]
+            else:
+                package_name = filename[:-3]
+            db.execute(
+                '''
+                INSERT OR IGNORE INTO python_imports(project, version, import_name)
+                VALUES(?, ?, ?);
+                ''',
+                [project, version, package_name],
+            )
 
 
 if __name__ == '__main__':
