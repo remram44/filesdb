@@ -1,9 +1,9 @@
 from concurrent.futures import ThreadPoolExecutor
-from distutils.version import LooseVersion
 from hashlib import sha1
 import itertools
 import logging
 import os
+from pkg_resources import parse_version
 import re
 import requests
 import shutil
@@ -106,7 +106,7 @@ def process_project(args):
     json_info = json_info.json()
 
     releases = sorted(json_info['releases'].items(),
-                      key=lambda p: LooseVersion(p[0]),
+                      key=lambda p: parse_version(p[0]),
                       reverse=True)
     if not releases or not releases[0][1]:
         logger.warning("Project %s has no releases", name)
