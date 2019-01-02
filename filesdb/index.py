@@ -123,7 +123,8 @@ def main():
         finally:
             shutil.rmtree(tmpdir)
 
-    db.commit()
+        db.commit()
+
     db.close()
 
 
