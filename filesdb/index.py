@@ -4,6 +4,7 @@ import os
 import re
 import requests
 import shutil
+import sqlite3
 import tarfile
 import tempfile
 import zipfile
@@ -16,6 +17,30 @@ re_project = re.compile(r'<a href="\/simple\/([^"]+)\/">([^<]+)</a>')
 
 
 def main():
+    db_exists = os.path.exists('projects.sqlite3')
+    db = sqlite3.connect('projects.sqlite3')
+    db.isolation_level = 'EXCLUSIVE'
+    if not db_exists:
+        db.execute(
+            '''
+            CREATE TABLE files(
+                project VARCHAR(100),
+                version VARCHAR(50),
+                filename VARCHAR(255),
+                sha1 VARCHAR(41)
+            );
+            '''
+        )
+        db.execute(
+            '''
+            CREATE TABLE python_imports(
+                project VARCHAR(100),
+                version VARCHAR(50),
+                import_name VARCHAR(50)
+            );
+            '''
+        )
+
     page = requests.get('https://pypi.org/simple/')
     page.raise_for_status()
     page = page.text
@@ -36,7 +61,7 @@ def main():
                           key=lambda p: p[0],
                           reverse=True)
         if not releases:
-            logger.warning("Package %s has no releases", name)
+            logger.warning("Project %s has no releases", name)
             continue
 
         version, release_files = releases[0]
@@ -62,19 +87,22 @@ def main():
                     for chunk in download.iter_content(4096):
                         if chunk:
                             fp.write(chunk)
-                process_archive(name, version, tmpfile)
+                process_archive(db, name, version, tmpfile)
         finally:
             shutil.rmtree(tmpdir)
 
+    db.commit()
+    db.close()
 
-def process_archive(project, version, filename):
+
+def process_archive(db, project, version, filename):
     if filename.endswith('.whl'):
         with zipfile.ZipFile(filename) as zip:
             for member in zip.namelist():
                 if '.dist-info/' in member or member.endswith('.dist-info'):
                     continue
                 with zip.open(member) as fp:
-                    record(project, version, member, fp)
+                    record(db, project, version, member, fp)
     else:
         with tarfile.open(filename, 'r:*') as tar:
             for member in tar.getmembers():
@@ -96,10 +124,11 @@ def process_archive(project, version, filename):
                     return
                 member_name = member.name[idx + 1:]
                 with tar.extractfile(member) as fp:
-                    record(project, version, member_name, fp)
+                    record(db, project, version, member_name, fp)
 
 
-def record(project, version, filename, fp):
+def record(db, project, version, filename, fp):
+    # Compute hash
     h = sha1()
     chunk = fp.read(4096)
     while len(chunk) == 4096:
@@ -107,7 +136,45 @@ def record(project, version, filename, fp):
         chunk = fp.read(4096)
     if chunk:
         h.update(chunk)
-    print(project, version, filename, h.hexdigest())
+
+    # Remove old versions from database
+    db.execute(
+        '''
+        DELETE FROM files
+        WHERE project=? AND version<>?;
+        ''',
+        [project, version],
+    )
+    db.execute(
+        '''
+        DELETE FROM python_imports
+        WHERE project=? AND version<>?;
+        ''',
+        [project, version],
+    )
+
+    # Insert file into database
+    db.execute(
+        '''
+        INSERT INTO files(project, version, filename, sha1)
+        VALUES(?, ?, ?, ?);
+        ''',
+        [project, version, filename, h.hexdigest()],
+    )
+
+    # Guess Python package name
+    if filename.endswith('.py'):
+        if '/' in filename:
+            package_name = filename[:filename.index('/') - 1]
+        else:
+            package_name = filename[:-3]
+        db.execute(
+            '''
+            INSERT OR IGNORE INTO python_imports(project, version, import_name)
+            VALUES(?, ?, ?);
+            ''',
+            [project, version, package_name],
+        )
 
 
 if __name__ == '__main__':
