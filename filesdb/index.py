@@ -118,15 +118,17 @@ def process_project(args):
     for release_file in release_files:
         if release_file['packagetype'] == 'bdist_wheel':
             if 'python_version' not in release_file:
-                release_file['_filesdb_priority'] = 4
-            elif 'py2' in release_file['python_version']:
                 release_file['_filesdb_priority'] = 5
-            elif 'py3' in release_file['python_version']:
+            elif 'py2' in release_file['python_version']:
                 release_file['_filesdb_priority'] = 6
+            elif 'py3' in release_file['python_version']:
+                release_file['_filesdb_priority'] = 7
             elif 'cp' in release_file['python_version']:
                 release_file['_filesdb_priority'] = 1
             else:
-                release_file['_filesdb_priority'] = 3
+                release_file['_filesdb_priority'] = 4
+        elif release_file['packagetype'] == 'bdist_egg':
+            release_file['_filesdb_priority'] = 3
         elif release_file['packagetype'] == 'sdist':
             release_file['_filesdb_priority'] = 2
         else:
@@ -211,10 +213,11 @@ IGNORED_FILES = ('PKG-INFO', 'MANIFEST.in', 'setup.cfg')
 
 def process_archive(db, db_mutex, project, filename):
     try:
-        if filename.endswith('.whl'):
+        if filename.endswith('.whl') or filename.endswith('.egg'):
             with zipfile.ZipFile(filename) as zip:
                 for member in zip.namelist():
                     if ('.dist-info/' in member or
+                            member.startswith('EGG-INFO') or
                             member.endswith('.dist-info') or
                             member in IGNORED_FILES):
                         continue
