@@ -69,6 +69,24 @@ def main():
 
         version, release_files = releases[0]
 
+        # Check if project is up to date
+        cur = db.execute(
+            '''
+            SELECT version FROM files
+            WHERE project=?;
+            ''',
+            [name],
+        )
+        try:
+            version_in_db = next(cur)[0]
+            cur.close()
+        except StopIteration:
+            cur.close()
+        else:
+            if version_in_db == version:
+                logger.info("Project %s is up to date", name)
+                continue
+
         # Prefer a wheel
         for release_file in release_files:
             if release_file['packagetype'] == 'bdist_wheel':
@@ -144,16 +162,16 @@ def record(db, project, version, filename, fp):
     db.execute(
         '''
         DELETE FROM files
-        WHERE project=? AND version<>?;
+        WHERE project=?;
         ''',
-        [project, version],
+        [project],
     )
     db.execute(
         '''
         DELETE FROM python_imports
-        WHERE project=? AND version<>?;
+        WHERE project=?;
         ''',
-        [project, version],
+        [project],
     )
 
     # Insert file into database
