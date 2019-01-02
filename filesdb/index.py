@@ -124,7 +124,7 @@ def process_archive(db, project, version, filename):
     elif filename.endswith('.zip'):
         with zipfile.ZipFile(filename) as zip:
             for member in zip.infolist():
-                if member.is_dir():
+                if member.filename.endswith('/'):  # Directory
                     continue
                 assert member.filename.startswith(project)
                 if ('.egg-info/' in member.filename or
