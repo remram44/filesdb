@@ -48,9 +48,6 @@ def main():
         name = m.group(2)
         link = m.group(1)
 
-        if link != 'usagestats':
-            continue
-
         logger.info("Processing %s", name)
 
         json_info = requests.get('https://pypi.org/pypi/{}/json'.format(link))
