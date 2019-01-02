@@ -16,30 +16,39 @@ logger = logging.getLogger(__name__)
 re_project = re.compile(r'<a href="\/simple\/([^"]+)\/">([^<]+)</a>')
 
 
+schema = [
+    '''
+    CREATE TABLE files(
+        project VARCHAR(100),
+        version VARCHAR(50),
+        filename VARCHAR(255),
+        sha1 VARCHAR(41)
+    );
+    ''',
+    '''CREATE INDEX files-idx-project ON files(project);''',
+    '''CREATE INDEX files-idx-filename ON files(filename);''',
+    '''CREATE INDEX files-idx-sha1 ON files(sha1);''',
+    '''
+    CREATE TABLE python_imports(
+        project VARCHAR(100) PRIMARY KEY,
+        version VARCHAR(50),
+        import_name VARCHAR(50)
+    );
+    ''',
+    '''
+    CREATE INDEX python_imports-idx-import_name
+    ON python_imports(import_name);
+    ''',
+]
+
+
 def main():
     db_exists = os.path.exists('projects.sqlite3')
     db = sqlite3.connect('projects.sqlite3')
     db.isolation_level = 'EXCLUSIVE'
     if not db_exists:
-        db.execute(
-            '''
-            CREATE TABLE files(
-                project VARCHAR(100),
-                version VARCHAR(50),
-                filename VARCHAR(255),
-                sha1 VARCHAR(41)
-            );
-            '''
-        )
-        db.execute(
-            '''
-            CREATE TABLE python_imports(
-                project VARCHAR(100),
-                version VARCHAR(50),
-                import_name VARCHAR(50)
-            );
-            '''
-        )
+        for statement in schema:
+            db.execute(statement)
 
     page = requests.get('https://pypi.org/simple/')
     page.raise_for_status()
