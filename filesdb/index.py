@@ -115,18 +115,27 @@ def process_project(args):
 
     version, release_files = releases[0]
 
-    # Prefer a wheel
+    # Select one of the archives
     for release_file in release_files:
         if release_file['packagetype'] == 'bdist_wheel':
-            break
-    else:
-        # Else, sdist
-        for release_file in release_files:
-            if release_file['packagetype'] == 'sdist':
-                break
+            if not 'python_version' in release_file:
+                release_file['_filesdb_priority'] = 4
+            elif 'py2' in release_file['python_version']:
+                release_file['_filesdb_priority'] = 5
+            elif 'py3' in release_file['python_version']:
+                release_file['_filesdb_priority'] = 6
+            elif 'cp' in release_file['python_version']:
+                release_file['_filesdb_priority'] = 1
+            else:
+                release_file['_filesdb_priority'] = 3
+        elif release_file['packagetype'] == 'sdist':
+            release_file['_filesdb_priority'] = 2
         else:
-            logger.error("Couldn't find a suitable file!")
-            return
+            logger.error("Unknown package type %r",
+                         release_file['packagetype'])
+    release_file = sorted(release_files,
+                          key=lambda r: r['_filesdb_priority'],
+                          reverse=True)[0]
 
     # Check if project is up to date
     with db_mutex:
