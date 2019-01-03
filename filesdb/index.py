@@ -45,7 +45,8 @@ schema = [
         project VARCHAR(100) PRIMARY KEY,
         version VARCHAR(50),
         archive VARCHAR(255),
-        updated DATETIME
+        updated DATETIME,
+        deleted DATETIME
     );
     ''',
     '''CREATE INDEX projects_idx_updated ON projects(updated);''',
@@ -100,6 +101,15 @@ def main():
         VALUES(?, ?);
         ''',
         ([m.group(2), m.group(1)] for m in matches)
+    )
+
+    # Mark absent projects as deleted
+    db.execute(
+        '''
+        UPDATE projects SET deleted=datetime()
+        WHERE deleted IS NULL
+            AND projects.project NOT IN (SELECT project FROM tmp.todo);
+        '''
     )
 
     # Get list of projects to process: those we haven't indexed in at least a
