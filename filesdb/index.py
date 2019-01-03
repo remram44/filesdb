@@ -15,7 +15,7 @@ import threading
 import zipfile
 
 
-logger = logging.getLogger(__name__)
+logger = logging.getLogger('index')
 
 
 def url_get(url, stream=False, retry=True, ok404=False):
@@ -212,6 +212,12 @@ def process_project(args):
 IGNORED_FILES = ('PKG-INFO', 'MANIFEST.in', 'setup.cfg')
 
 
+def check_top_level(filename, project):
+    project = project.lower().replace('-', '_')
+    filename = filename.lower().replace('-', '_')
+    return filename.startswith(project)
+
+
 def process_archive(db, db_mutex, project, filename):
     try:
         if filename.endswith('.whl') or filename.endswith('.egg'):
@@ -229,7 +235,7 @@ def process_archive(db, db_mutex, project, filename):
                 for member in zip.infolist():
                     if member.filename.endswith('/'):  # Directory
                         continue
-                    if not member.filename.startswith(project):
+                    if not check_top_level(member.filename, project):
                         logger.error("File %s from project %s doesn't have "
                                      "the expected top-level directory",
                                      member.filename, project)
@@ -255,7 +261,7 @@ def process_archive(db, db_mutex, project, filename):
                 for member in tar.getmembers():
                     if not member.isfile():
                         continue
-                    if not member.name.startswith(project):
+                    if not check_top_level(member.name, project):
                         logger.error("File %s from project %s doesn't have "
                                      "the expected top-level directory",
                                      member.name, project)
