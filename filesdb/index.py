@@ -23,7 +23,9 @@ def url_get(url, stream=False, retry=True, ok404=False):
     attempts = 5 if retry else 1
     for i in itertools.count(1):
         try:
-            r = requests.get(url, stream=stream)
+            r = requests.get(url,
+                             headers={'User-Agent': 'filesdb'},
+                             stream=stream)
             if ok404 and r.status_code == 404:
                 return r
             r.raise_for_status()
