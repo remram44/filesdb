@@ -44,9 +44,11 @@ schema = [
     CREATE TABLE projects(
         project VARCHAR(100) PRIMARY KEY,
         version VARCHAR(50),
-        archive VARCHAR(255)
+        archive VARCHAR(255),
+        updated DATETIME
     );
     ''',
+    '''CREATE INDEX projects_idx_updated ON projects(updated);''',
     '''
     CREATE TABLE files(
         project VARCHAR(100),
@@ -78,23 +80,53 @@ def main():
         for statement in schema:
             db.execute(statement)
 
-    threads = ThreadPoolExecutor(8)
-
+    # Get list of packages
     page = url_get('https://pypi.org/simple/').text
-    for _ in threads.map(process_project,
-                         ((db, db_mutex, m)
-                          for m in re_project.finditer(page))):
+    matches = re_project.finditer(page)
+
+    # Attach a temporary database, store list of projects to process
+    db.execute('''ATTACH DATABASE '' AS tmp;''')
+    db.execute(
+        '''
+        CREATE TABLE tmp.todo(
+            project VARCHAR(100) PRIMARY KEY,
+            link VARCHAR(100)
+        );
+        '''
+    )
+    db.executemany(
+        '''
+        INSERT INTO tmp.todo(project, link)
+        VALUES(?, ?);
+        ''',
+        ([m.group(2), m.group(1)] for m in matches)
+    )
+
+    # Get list of projects to process: those we haven't indexed in at least a
+    # day, oldest first
+    cursor = db.execute(
+        '''
+        SELECT tmp.todo.project, tmp.todo.link, projects.archive
+        FROM tmp.todo
+            LEFT OUTER JOIN projects ON tmp.todo.project = projects.project
+        WHERE julianday() - IFNULL(julianday(projects.updated), 0) > 1
+        ORDER BY projects.updated;
+        '''
+    )
+
+    # Process projects in parallel
+    threads = ThreadPoolExecutor(8)
+    for _ in threads.map(lambda a: process_project(*a),
+                         ((db, db_mutex, name, link, archive)
+                          for name, link, archive in cursor)):
         pass
+
+    cursor.close()
 
     db.close()
 
 
-def process_project(args):
-    db, db_mutex, m = args
-
-    name = m.group(2)
-    link = m.group(1)
-
+def process_project(db, db_mutex, name, link, archive_in_db):
     logger.info("Processing %s", name)
 
     json_info = url_get('https://pypi.org/pypi/{}/json'.format(link),
@@ -139,25 +171,12 @@ def process_project(args):
                           reverse=True)[0]
 
     # Check if project is up to date
-    with db_mutex:
-        cur = db.execute(
-            '''
-            SELECT archive FROM projects
-            WHERE project=?;
-            ''',
-            [name],
-        )
-        try:
-            archive_in_db = next(cur)[0]
-            cur.close()
-        except StopIteration:
-            cur.close()
-        else:
-            if archive_in_db == release_file['filename']:
-                logger.info("Project %s is up to date", name)
-                return
+    if archive_in_db == release_file['filename']:
+        logger.info("Project %s is up to date", name)
+        return
 
-        # Remove old versions from database
+    # Remove old versions from database
+    with db_mutex:
         db.execute(
             '''
             DELETE FROM files
@@ -168,6 +187,13 @@ def process_project(args):
         db.execute(
             '''
             DELETE FROM python_imports
+            WHERE project=?;
+            ''',
+            [name],
+        )
+        db.execute(
+            '''
+            DELETE FROM projects
             WHERE project=?;
             ''',
             [name],
@@ -193,15 +219,8 @@ def process_project(args):
     with db_mutex:
         db.execute(
             '''
-            DELETE FROM projects
-            WHERE project=?;
-            ''',
-            [name],
-        )
-        db.execute(
-            '''
-            INSERT INTO projects(project, version, archive)
-            VALUES(?, ?, ?);
+            INSERT INTO projects(project, version, archive, updated)
+            VALUES(?, ?, ?, datetime());
             ''',
             [name, version, release_file['filename']],
         )
