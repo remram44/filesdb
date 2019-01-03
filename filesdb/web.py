@@ -41,6 +41,7 @@ def project(project_name):
         'project': project[0],
         'version': project[1],
         'archive': project[2],
+        'repository': 'pypi',
         'files': [
             {'filename': file[0], 'sha1': file[1]}
             for file in files
@@ -55,6 +56,7 @@ def organize_files(cursor):
             'project': project,
             'version': version,
             'archive': archive,
+            'repository': 'pypi',
             'files': [],
         })['files']
         files.append({'filename': filename, 'sha1': sha1})
