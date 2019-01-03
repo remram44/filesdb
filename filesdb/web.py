@@ -130,8 +130,8 @@ Available endpoints:
 * /sha1/<sha1_hash>: List files that have the given SHA1 hash, and the projects
   they come from</pre>
 
-    <a href="https://github.com/remram44/filesdb">
-      <pre>https://github.com/remram44/filesdb</pre>
+    <a href="https://github.com/ViDA-NYU/filesdb">
+      <pre>https://github.com/ViDA-NYU/filesdb</pre>
     </a>
   </body>
 </html>
