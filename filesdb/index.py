@@ -341,18 +341,20 @@ def process_file(db, db_mutex, project, filename, fp):
 
         # Guess Python package name
         if (filename.endswith('.py') and
-                filename not in ('test.py', 'tests.py', 'setup.py')):
+                filename not in ('test.py', 'tests.py')):
             if '/' in filename:
                 package_name = filename[:filename.index('/')]
             else:
                 package_name = filename[:-3]
-            db.execute(
-                '''
-                INSERT OR IGNORE INTO python_imports(project, import_name)
-                VALUES(?, ?);
-                ''',
-                [project, package_name],
-            )
+            if package_name not in ('setup', 'test', 'tests', 'examples',
+                                    'samples'):
+                db.execute(
+                    '''
+                    INSERT OR IGNORE INTO python_imports(project, import_name)
+                    VALUES(?, ?);
+                    ''',
+                    [project, package_name],
+                )
 
 
 if __name__ == '__main__':
