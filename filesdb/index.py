@@ -97,22 +97,24 @@ def main():
         );
         '''
     )
-    db.executemany(
+    cursor = db.executemany(
         '''
         INSERT INTO tmp.todo(project, link)
         VALUES(?, ?);
         ''',
         ([m.group(2), m.group(1)] for m in matches)
     )
+    logger.info("Found %d projects", cursor.rowcount)
 
     # Mark absent projects as deleted
-    db.execute(
+    cursor = db.execute(
         '''
         UPDATE projects SET deleted=datetime()
         WHERE deleted IS NULL
             AND projects.project NOT IN (SELECT project FROM tmp.todo);
         '''
     )
+    logger.info("%d projects were deleted", cursor.rowcount)
 
     # Get list of projects to process: those we haven't indexed in at least a
     # day, oldest first
