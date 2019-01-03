@@ -237,7 +237,7 @@ def process_project(db, db_mutex, name, link, archive_in_db):
         )
 
     logger.info("Getting %s", release_file['url'])
-    tmpdir = tempfile.mkdtemp()
+    tmpdir = tempfile.mkdtemp(prefix='filesdb_')
     try:
         with url_get(release_file['url'], stream=True) as download:
             tmpfile = os.path.join(
