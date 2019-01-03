@@ -172,7 +172,6 @@ def process_project(args):
             ''',
             [name],
         )
-        db.commit()
 
     logger.info("Getting %s", release_file['url'])
     tmpdir = tempfile.mkdtemp()
@@ -321,8 +320,6 @@ def process_file(db, db_mutex, project, filename, fp):
                 ''',
                 [project, package_name],
             )
-
-        db.commit()
 
 
 if __name__ == '__main__':
