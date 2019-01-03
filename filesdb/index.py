@@ -146,33 +146,39 @@ def process_project(db, db_mutex, name, link, archive_in_db):
     json_info = url_get('https://pypi.org/pypi/{}/json'.format(link),
                         ok404=True)
     if json_info.status_code == 404:
-        logger.warning("JSON 404")
-        return
-    json_info.raise_for_status()
-    json_info = json_info.json()
+        logger.warning("JSON 404: %s", name)
+        releases = []
+    else:
+        json_info.raise_for_status()
+        json_info = json_info.json()
 
-    releases = sorted(json_info['releases'].items(),
-                      key=lambda p: parse_version(p[0]),
-                      reverse=True)
-    if not releases or not releases[0][1]:
-        logger.warning("Project %s has no releases", name)
-        # Insert the project if it's not already there
-        db.execute(
-            '''
-            INSERT OR IGNORE INTO projects(project, version, archive, updated)
-            VALUES(?, NULL, NULL, datetime());
-            ''',
-            [name],
-        )
-        # Update the date if it is
-        db.execute(
-            '''
-            UPDATE projects SET updated=datetime()
-            WHERE project=?;
-            ''',
-            [name],
-        )
-        db.commit()
+        releases = sorted(json_info['releases'].items(),
+                          key=lambda p: parse_version(p[0]),
+                          reverse=True)
+        releases = [(k, v) for k, v in releases if v]
+        if not releases:
+            logger.warning("Project %s has no releases", name)
+
+    if not releases:
+        with db_mutex:
+            # Insert the project if it's not already there
+            db.execute(
+                '''
+                INSERT OR IGNORE INTO projects(project, version,
+                                               archive, updated)
+                VALUES(?, NULL, NULL, datetime());
+                ''',
+                [name],
+            )
+            # Update the date if it is
+            db.execute(
+                '''
+                UPDATE projects SET updated=datetime()
+                WHERE project=?;
+                ''',
+                [name],
+            )
+            db.commit()
         return
 
     version, release_files = releases[0]
