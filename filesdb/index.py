@@ -156,6 +156,23 @@ def process_project(db, db_mutex, name, link, archive_in_db):
                       reverse=True)
     if not releases or not releases[0][1]:
         logger.warning("Project %s has no releases", name)
+        # Insert the project if it's not already there
+        db.execute(
+            '''
+            INSERT OR IGNORE INTO projects(project, version, archive, updated)
+            VALUES(?, NULL, NULL, datetime());
+            ''',
+            [name],
+        )
+        # Update the date if it is
+        db.execute(
+            '''
+            UPDATE projects SET updated=datetime()
+            WHERE project=?;
+            ''',
+            [name],
+        )
+        db.commit()
         return
 
     version, release_files = releases[0]
