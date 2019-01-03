@@ -354,13 +354,18 @@ def process_file(db, db_mutex, project, filename, fp):
 
     with db_mutex:
         # Insert file into database
-        db.execute(
-            '''
-            INSERT INTO files(project, filename, sha1)
-            VALUES(?, ?, ?);
-            ''',
-            [project, filename, h.hexdigest()],
-        )
+        try:
+            db.execute(
+                '''
+                INSERT INTO files(project, filename, sha1)
+                VALUES(?, ?, ?);
+                ''',
+                [project, filename, h.hexdigest()],
+            )
+        except UnicodeEncodeError:
+            logger.warning("Error encoding project %r file %r",
+                           project, filename)
+            return
 
         # Guess Python package name
         if (filename.endswith('.py') and
