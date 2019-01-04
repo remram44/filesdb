@@ -82,7 +82,7 @@ def organize_files(cursor):
     return jsonify(list(projects.values()))
 
 
-@app.route('/file/<file_prefix>')
+@app.route('/file/<path:file_prefix>')
 def file(file_prefix):
     if len(file_prefix) <= 2:
         return jsonify({'error': "File prefix too short"}), 400
