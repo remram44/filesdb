@@ -64,9 +64,14 @@ schema = [
     '''CREATE INDEX files_idx_sha1 ON files(sha1);''',
     '''
     CREATE TABLE python_imports(
-        project VARCHAR(100) PRIMARY KEY,
-        import_name VARCHAR(50)
+        project VARCHAR(100),
+        import_name VARCHAR(50),
+        UNIQUE(project, import_name)
     );
+    ''',
+    '''
+    CREATE INDEX python_imports_idx_project
+    ON python_imports(project);
     ''',
     '''
     CREATE INDEX python_imports_idx_import_name
