@@ -8,6 +8,23 @@ app = Flask('filesdb')
 
 db = sqlite3.connect('projects.sqlite3', check_same_thread=False)
 
+nb_projects = db.execute(
+    '''
+    SELECT count(project)
+    FROM projects;
+    '''
+)
+nb_projects = next(nb_projects)[0]
+
+
+nb_files = db.execute(
+    '''
+    SELECT count(*)
+    FROM files;
+    '''
+)
+nb_files = next(nb_files)[0]
+
 
 @app.route('/project/<project_name>')
 def project(project_name):
@@ -128,11 +145,13 @@ Available endpoints:
 * /file/<file_prefix>: List files matching a given prefix, and the projects
   they come from
 * /sha1/<sha1_hash>: List files that have the given SHA1 hash, and the projects
-  they come from</pre>
+  they come from
+
+There are {projects} projects and {files} files in the database.</pre>
 
     <a href="https://github.com/ViDA-NYU/filesdb">
       <pre>https://github.com/ViDA-NYU/filesdb</pre>
     </a>
   </body>
 </html>
-'''
+'''.format(projects=nb_projects, files=nb_files)
