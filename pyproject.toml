@@ -1,0 +1,31 @@
+[tool.poetry]
+name = "filesdb"
+version = "0.1.0"
+description = "File database for package manager"
+readme = "README.rst"
+license = "MIT"
+
+authors = [
+    "Remi Rampin <remi@rampin.org>"
+]
+
+repository = "https://github.com/VIDA-NYU/filesdb"
+homepage = "https://github.com/VIDA-NYU/filesdb"
+
+keywords = ["files", "database", "package", "package manager", "pip", "pypi"]
+
+classifiers = [
+]
+
+[tool.poetry.dependencies]
+python = "^3.7"
+aiohttp = "^3.7.4"
+SQLAlchemy = "^1.4.11"
+
+[tool.poetry.dev-dependencies]
+flake8 = "*"
+readme_renderer = "*"
+
+[build-system]
+requires = ["poetry>=0.12"]
+build-backend = "poetry.masonry.api"
