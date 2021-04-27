@@ -6,6 +6,7 @@ import asyncio
 from datetime import datetime
 import itertools
 import logging
+from pkg_resources import parse_version
 import sqlalchemy
 
 from . import database
@@ -110,6 +111,49 @@ async def get_version(db, http_session, project_name):
             database.projects.update()
             .where(database.projects.c.name == project_name)
             .values(versions_retrieved_date=datetime.utcnow())
+        )
+        db.execute(query)
+
+    # Get downloads for latest version
+    latest_version = max(versions, key=parse_version)
+
+    with db.begin():
+        # List of downloads
+        assert all(
+            isinstance(download['filename'], str) and download['filename']
+            and isinstance(download['size'], int)
+            and isinstance(download['url'], str) and download['url']
+            and isinstance(download['packagetype'], str) and download['packagetype']
+            and isinstance(download['digests']['md5'], str) and download['digests']['md5']
+            and isinstance(download['digests']['sha256'], str) and download['digests']['sha256']
+            for download in obj['releases'][latest_version]
+        )
+        query = (
+            database.downloads.insert()
+            # FIXME on SQLAlchemy 1.4 update (this is SQLite3 only)
+            .prefix_with('OR IGNORE')
+            .values([
+                {
+                    'project_name': project_name,
+                    'project_version': latest_version,
+                    'name': download['filename'],
+                    'size_bytes': download['size'],
+                    'url': download['url'],
+                    'type': download['packagetype'],
+                    'hash_md5': download['digests']['md5'],
+                    'hash_sha256': download['digests']['sha256'],
+                }
+                for download in obj['releases'][latest_version]
+            ])
+        )
+        db.execute(query)
+
+        # Note that this version has up-to-date downloads
+        query = (
+            database.project_versions.update()
+            .where(database.project_versions.c.project_name == project_name)
+            .where(database.project_versions.c.version == latest_version)
+            .values(downloads_retrieved_date=datetime.utcnow())
         )
         db.execute(query)
 
