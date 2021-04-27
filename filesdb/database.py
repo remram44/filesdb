@@ -3,6 +3,7 @@ import logging
 import os
 import sqlalchemy
 from sqlalchemy import Column, ForeignKey, MetaData, Table
+import sqlalchemy.event
 from sqlalchemy.types import DateTime, Integer, String
 
 
@@ -76,6 +77,14 @@ python_imports = Table(
 @contextlib.contextmanager
 def connect():
     engine = sqlalchemy.create_engine(os.environ['DATABASE_URL'])
+
+    if os.environ['DATABASE_URL'].startswith('sqlite:'):
+        @sqlalchemy.event.listens_for(engine, 'connect')
+        def sqlite_pragma(dbapi_connection, connection_record):
+            cursor = dbapi_connection.cursor()
+            cursor.execute('PRAGMA foreign_keys=ON')
+            cursor.close()
+
     with engine.connect() as conn:
         if not engine.dialect.has_table(conn, projects.name):
             logger.warning("The tables don't seem to exist; creating")
