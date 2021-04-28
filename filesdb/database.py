@@ -50,6 +50,7 @@ downloads = Table(
     Column('url', String, nullable=True),
     # Type as reported by API, 'bdist_wheel', 'sdist'
     Column('type', String, nullable=False, index=True),
+    Column('python_version', String, nullable=True),
     Column('hash_md5', String, nullable=False),
     Column('hash_sha256', String, nullable=False),
 )

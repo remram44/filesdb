@@ -140,6 +140,7 @@ async def get_version(db, http_session, project_name):
                     'size_bytes': download['size'],
                     'url': download['url'],
                     'type': download['packagetype'],
+                    'python_version': download['python_version'],
                     'hash_md5': download['digests']['md5'],
                     'hash_sha256': download['digests']['sha256'],
                 }
