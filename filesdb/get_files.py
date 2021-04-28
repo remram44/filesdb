@@ -211,6 +211,15 @@ async def process_versions(db, http_session, project_name, versions):
                                 process_file(db, download['name'], name, fp)
             except (tarfile.TarError, zipfile.BadZipFile):
                 logger.warning("Error reading %s as an archive", download['name'])
+            else:
+                # Mark download as indexed
+                query = (
+                    database.downloads.update()
+                    .where(database.downloads.c.project_name == project_name)
+                    .where(database.downloads.c.name == download['name'])
+                    .values(indexed=True)
+                )
+                db.execute(query)
 
 
 async def amain():

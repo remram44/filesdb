@@ -6,7 +6,7 @@ from sqlalchemy import Column, ForeignKey, MetaData, Table
 import sqlalchemy.dialects.postgresql
 import sqlalchemy.dialects.sqlite
 import sqlalchemy.event
-from sqlalchemy.types import DateTime, Integer, String
+from sqlalchemy.types import Boolean, DateTime, Integer, String
 
 
 logger = logging.getLogger(__name__)
@@ -51,6 +51,7 @@ downloads = Table(
     Column('python_version', String, nullable=True),
     Column('hash_md5', String, nullable=False),
     Column('hash_sha256', String, nullable=False),
+    Column('indexed', Boolean, nullable=False, default=False, index=True),
 )
 
 files = Table(
