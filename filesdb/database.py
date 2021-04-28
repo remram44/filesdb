@@ -25,9 +25,6 @@ projects = Table(
     'projects',
     metadata,
     Column('name', String, primary_key=True),
-    Column('seen', DateTime, nullable=True),
-    # If set, the 'projects_versions' table was populated for this project
-    Column('versions_retrieved_date', DateTime, nullable=True, index=True),
 )
 
 
@@ -36,8 +33,6 @@ project_versions = Table(
     metadata,
     Column('project_name', String, ForeignKey('projects.name'), primary_key=True),
     Column('version', String, primary_key=True),
-    # If set, the 'downloads' table was populated for this version
-    Column('downloads_retrieved_date', DateTime, nullable=True, index=True),
 )
 
 downloads = Table(

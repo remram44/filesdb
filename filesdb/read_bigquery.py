@@ -124,7 +124,6 @@ def main():
                 versions.insert(
                     project_name=row['name'],
                     version=row['version'],
-                    # TODO: Get rid of downloads_retrieved_date?
                 )
                 downloads.insert(
                     project_name=row['name'],

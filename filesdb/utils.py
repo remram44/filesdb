@@ -1,14 +1,5 @@
-import itertools
 import os
 import re
-
-
-def iwindows(iterable, size):
-    iterator = iter(iterable)
-    chunk = list(itertools.islice(iterator, size))
-    while chunk:
-        yield chunk
-        chunk = list(itertools.islice(iterator, size))
 
 
 _windows_device_files = ('CON', 'AUX', 'COM1', 'COM2', 'COM3', 'COM4', 'LPT1',
