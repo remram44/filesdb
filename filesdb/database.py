@@ -83,8 +83,7 @@ def insert_or_ignore(table):
         raise ValueError("Don't know how to do INSERT OR IGNORE on this database")
 
 
-@contextlib.contextmanager
-def connect():
+def _make_engine():
     engine = sqlalchemy.create_engine(os.environ['DATABASE_URL'])
 
     if os.environ['DATABASE_URL'].startswith('sqlite:'):
@@ -93,6 +92,24 @@ def connect():
             cursor = dbapi_connection.cursor()
             cursor.execute('PRAGMA foreign_keys=ON')
             cursor.close()
+
+    return engine
+
+
+def get_engine():
+    engine = _make_engine()
+
+    with engine.connect() as conn:
+        if not engine.dialect.has_table(conn, projects.name):
+            logger.warning("The tables don't seem to exist; creating")
+            metadata.create_all(bind=engine)
+
+    return engine
+
+
+@contextlib.contextmanager
+def connect():
+    engine = _make_engine()
 
     with engine.connect() as conn:
         if not engine.dialect.has_table(conn, projects.name):
