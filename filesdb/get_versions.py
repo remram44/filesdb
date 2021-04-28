@@ -138,6 +138,7 @@ async def get_version(db, http_session, project_name):
                     'project_version': latest_version,
                     'name': download['filename'],
                     'size_bytes': download['size'],
+                    'upload_time': datetime.fromisoformat(download['upload_time']),
                     'url': download['url'],
                     'type': download['packagetype'],
                     'python_version': download['python_version'],
