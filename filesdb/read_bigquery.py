@@ -89,22 +89,16 @@ def main():
         with database.connect() as db:
             projects = BatchInserter(
                 db,
-                database.projects.insert()
-                # FIXME on SQLAlchemy 1.4 update (this is SQLite3 only)
-                .prefix_with('OR IGNORE'),
+                database.insert_or_ignore(database.projects),
             )
             versions = BatchInserter(
                 db,
-                database.project_versions.insert()
-                # FIXME on SQLAlchemy 1.4 update (this is SQLite3 only)
-                .prefix_with('OR IGNORE'),
+                database.insert_or_ignore(database.project_versions),
                 [projects],
             )
             downloads = BatchInserter(
                 db,
-                database.downloads.insert()
-                # FIXME on SQLAlchemy 1.4 update (this is SQLite3 only)
-                .prefix_with('OR IGNORE'),
+                database.insert_or_ignore(database.downloads),
                 [projects],
             )
             for i, row in enumerate(reader):

@@ -38,9 +38,7 @@ async def amain():
                     total += len(chunk)
 
                     query = (
-                        database.projects.insert()
-                        # FIXME on SQLAlchemy 1.4 update (this is SQLite3 only)
-                        .prefix_with('OR IGNORE')
+                        database.insert_or_ignore(database.projects)
                         .values([
                             {'name': m.group(1), 'seen': now}
                             for m in chunk

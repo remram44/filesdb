@@ -96,9 +96,7 @@ async def get_version(db, http_session, project_name):
     with db.begin():
         # List of versions
         query = (
-            database.project_versions.insert()
-            # FIXME on SQLAlchemy 1.4 update (this is SQLite3 only)
-            .prefix_with('OR IGNORE')
+            database.insert_or_ignore(database.project_versions)
             .values([
                 {'project_name': project_name, 'version': number}
                 for number in versions
@@ -129,9 +127,7 @@ async def get_version(db, http_session, project_name):
             for download in obj['releases'][latest_version]
         )
         query = (
-            database.downloads.insert()
-            # FIXME on SQLAlchemy 1.4 update (this is SQLite3 only)
-            .prefix_with('OR IGNORE')
+            database.insert_or_ignore(database.downloads)
             .values([
                 {
                     'project_name': project_name,

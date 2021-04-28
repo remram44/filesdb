@@ -3,6 +3,8 @@ import logging
 import os
 import sqlalchemy
 from sqlalchemy import Column, ForeignKey, MetaData, Table
+import sqlalchemy.dialects.postgresql
+import sqlalchemy.dialects.sqlite
 import sqlalchemy.event
 from sqlalchemy.types import DateTime, Integer, String
 
@@ -74,6 +76,15 @@ python_imports = Table(
     Column('deduced_from_download_name', String, ForeignKey('downloads.name'), nullable=False),
     Column('import', String, nullable=False, index=True),
 )
+
+
+def insert_or_ignore(table):
+    if os.environ['DATABASE_URL'].startswith('sqlite:'):
+        return sqlalchemy.dialects.sqlite.insert(table).on_conflict_do_nothing()
+    elif os.environ['DATABASE_URL'].startswith('postgresql:'):
+        return sqlalchemy.dialects.postgresql.insert(table).on_conflict_do_nothing()
+    else:
+        raise ValueError("Don't know how to do INSERT OR IGNORE on this database")
 
 
 @contextlib.contextmanager
