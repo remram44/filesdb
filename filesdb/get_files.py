@@ -3,6 +3,7 @@
 
 import aiohttp
 import asyncio
+import contextlib
 import hashlib
 import logging
 import os
@@ -61,6 +62,96 @@ def process_file(db, download_name, filename, fp):
     db.execute(query)
 
 
+def process_archive(db, project_name, download, filename):
+    inserted = 0
+
+    if filename.endswith(('.whl', '.egg')):
+        with zipfile.ZipFile(filename) as arch:
+            for member in set(arch.namelist()):
+                if (
+                        '.dist-info/' in member
+                        or member.startswith('EGG-INFO')
+                        or member.endswith('.dist-info')
+                        or member in IGNORED_FILES
+                ):
+                    continue
+                with arch.open(member) as fp:
+                    process_file(db, download['name'], member, fp)
+                    inserted += 1
+    elif filename.endswith('.zip'):
+        with zipfile.ZipFile(filename) as arch:
+            for member in set(arch.namelist()):
+                if member.endswith('/'):  # Directory
+                    continue
+                if not check_top_level(member, project_name):
+                    logger.warning(
+                        "File %s from download %s doesn't have the expected top-level directory",
+                        member,
+                        download['name'],
+                    )
+                    return 'wrong structure'
+                if (
+                        '.egg-info/' in member
+                        or member.endswith('.egg-info')
+                        or member in IGNORED_FILES
+                ):
+                    continue
+                try:
+                    idx = member.index('/')
+                except ValueError:
+                    logger.warning(
+                        "File %s from download %s doesn't have the expected top-level directory",
+                        member,
+                        download['name'],
+                    )
+                    return 'wrong structure'
+                name = member[idx + 1:]
+                if name in IGNORED_FILES:
+                    continue
+                with arch.open(member) as fp:
+                    process_file(db, download['name'], name, fp)
+                    inserted += 1
+    else:
+        with tarfile.open(filename, 'r:*') as arch:
+            for member in set(arch.getmembers()):
+                if not member.isfile():
+                    continue
+                if not check_top_level(member.name, project_name):
+                    logger.warning(
+                        "File %s from download %s doesn't have the expected top-level directory",
+                        member.name,
+                        download['name'],
+                    )
+                    return 'wrong structure'
+                if (
+                        '.egg-info/' in member.name
+                        or member.name.endswith('.egg-info')
+                        or member.name == 'PKG-INFO'
+                        or member.name in IGNORED_FILES
+                ):
+                    continue
+                try:
+                    idx = member.name.index('/')
+                except ValueError:
+                    logger.warning(
+                        "File %s from download %s doesn't have the expected top-level directory",
+                        member.name,
+                        download['name'],
+                    )
+                    return 'wrong structure'
+                name = member.name[idx + 1:]
+                if name in IGNORED_FILES:
+                    continue
+                with arch.extractfile(member) as fp:
+                    process_file(db, download['name'], name, fp)
+                    inserted += 1
+
+    if inserted == 0:
+        return 'no files'
+    logger.info("Got %d files", inserted)
+    return 'yes'
+
+
 async def process_versions(db, http_session, project_name, versions):
     latest_version = max(versions, key=parse_version)
 
@@ -68,19 +159,19 @@ async def process_versions(db, http_session, project_name, versions):
     query = '''\
         SELECT
             EXISTS (
-                SELECT files.name
+                SELECT name
                 FROM downloads
-                INNER JOIN files ON downloads.name = files.download_name
-                WHERE downloads.project_name = :project
-                    AND downloads.project_version = :version
-            ) AS has_files;
+                WHERE project_name = :project
+                    AND project_version = :version
+                    AND indexed NOT NULL
+            ) AS is_indexed;
     '''
-    has_files, = db.execute(
+    is_indexed, = db.execute(
         query,
         {'project': project_name, 'version': latest_version},
     ).fetchone()
-    if has_files:
-        logger.info("%r %s has files, skipping", project_name, latest_version)
+    if is_indexed:
+        logger.info("%r %s is indexed, skipping", project_name, latest_version)
         return
 
     # List downloads
@@ -118,7 +209,9 @@ async def process_versions(db, http_session, project_name, versions):
             download['_filesdb_priority'] = 0
     download = max(downloads, key=lambda d: d['_filesdb_priority'])
 
-    with db.begin():
+    with contextlib.ExitStack() as stack:
+        transaction = stack.enter_context(db.begin())
+
         with tempfile.TemporaryDirectory(prefix='filesdb_') as tmpdir:
             # Download file
             logger.info("Getting %s", download['url'])
@@ -132,94 +225,27 @@ async def process_versions(db, http_session, project_name, versions):
                         fp.write(data)
 
             try:
-                if filename.endswith(('.whl', '.egg')):
-                    with zipfile.ZipFile(filename) as arch:
-                        for member in set(arch.namelist()):
-                            if (
-                                '.dist-info/' in member
-                                or member.startswith('EGG-INFO')
-                                or member.endswith('.dist-info')
-                                or member in IGNORED_FILES
-                            ):
-                                continue
-                            with arch.open(member) as fp:
-                                process_file(db, download['name'], member, fp)
-                elif filename.endswith('.zip'):
-                    with zipfile.ZipFile(filename) as arch:
-                        for member in set(arch.namelist()):
-                            if member.endswith('/'):  # Directory
-                                continue
-                            if not check_top_level(member, project_name):
-                                logger.warning(
-                                    "File %s from download %s doesn't have the expected top-level directory",
-                                    member,
-                                    download['name'],
-                                )
-                                return
-                            if (
-                                '.egg-info/' in member
-                                or member.endswith('.egg-info')
-                                or member in IGNORED_FILES
-                            ):
-                                continue
-                            try:
-                                idx = member.index('/')
-                            except ValueError:
-                                logger.warning(
-                                    "File %s from download %s doesn't have the expected top-level directory",
-                                    member,
-                                    download['name'],
-                                )
-                                return
-                            name = member[idx + 1:]
-                            if name in IGNORED_FILES:
-                                continue
-                            with arch.open(member) as fp:
-                                process_file(db, download['name'], name, fp)
-                else:
-                    with tarfile.open(filename, 'r:*') as arch:
-                        for member in set(arch.getmembers()):
-                            if not member.isfile():
-                                continue
-                            if not check_top_level(member.name, project_name):
-                                logger.warning(
-                                    "File %s from download %s doesn't have the expected top-level directory",
-                                    member.name,
-                                    download['name'],
-                                )
-                                return
-                            if (
-                                '.egg-info/' in member.name
-                                or member.name.endswith('.egg-info')
-                                or member.name == 'PKG-INFO'
-                                or member.name in IGNORED_FILES
-                            ):
-                                continue
-                            try:
-                                idx = member.name.index('/')
-                            except ValueError:
-                                logger.warning(
-                                    "File %s from download %s doesn't have the expected top-level directory",
-                                    member.name,
-                                    download['name'],
-                                )
-                                return
-                            name = member.name[idx + 1:]
-                            if name in IGNORED_FILES:
-                                continue
-                            with arch.extractfile(member) as fp:
-                                process_file(db, download['name'], name, fp)
+                result = process_archive(db, project_name, download, filename)
             except (tarfile.TarError, zipfile.BadZipFile):
+                result = 'bad archive'
                 logger.warning("Error reading %s as an archive", download['name'])
-            else:
-                # Mark download as indexed
-                query = (
-                    database.downloads.update()
-                    .where(database.downloads.c.project_name == project_name)
-                    .where(database.downloads.c.name == download['name'])
-                    .values(indexed='yes')
-                )
-                db.execute(query)
+
+            if result != 'yes':
+                logger.warning("Error: %s", result)
+
+                # Rollback transaction, start a new one
+                with stack.pop_all():
+                    transaction.rollback()
+                transaction = stack.enter_context(db.begin())
+
+            # Mark download as indexed
+            query = (
+                database.downloads.update()
+                .where(database.downloads.c.project_name == project_name)
+                .where(database.downloads.c.name == download['name'])
+                .values(indexed=result)
+            )
+            db.execute(query)
 
 
 async def amain():
