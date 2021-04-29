@@ -134,7 +134,7 @@ async def process_versions(db, http_session, project_name, versions):
             try:
                 if filename.endswith(('.whl', '.egg')):
                     with zipfile.ZipFile(filename) as arch:
-                        for member in arch.namelist():
+                        for member in set(arch.namelist()):
                             if (
                                 '.dist-info/' in member
                                 or member.startswith('EGG-INFO')
@@ -146,7 +146,7 @@ async def process_versions(db, http_session, project_name, versions):
                                 process_file(db, download['name'], member, fp)
                 elif filename.endswith('.zip'):
                     with zipfile.ZipFile(filename) as arch:
-                        for member in arch.namelist():
+                        for member in set(arch.namelist()):
                             if member.endswith('/'):  # Directory
                                 continue
                             if not check_top_level(member, project_name):
@@ -178,7 +178,7 @@ async def process_versions(db, http_session, project_name, versions):
                                 process_file(db, download['name'], name, fp)
                 else:
                     with tarfile.open(filename, 'r:*') as arch:
-                        for member in arch.getmembers():
+                        for member in set(arch.getmembers()):
                             if not member.isfile():
                                 continue
                             if not check_top_level(member.name, project_name):
