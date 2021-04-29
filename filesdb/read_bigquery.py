@@ -141,6 +141,10 @@ def main():
                     hash_sha256=row['sha256_digest'],
                 )
 
+            projects.flush()
+            versions.flush()
+            downloads.flush()
+
 
 if __name__ == '__main__':
     main()
