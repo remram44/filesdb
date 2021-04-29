@@ -5,6 +5,7 @@ import aiohttp
 import asyncio
 import contextlib
 import hashlib
+import itertools
 import logging
 import os
 from pkg_resources import parse_version
@@ -152,41 +153,42 @@ def process_archive(db, project_name, download, filename):
     return 'yes'
 
 
-async def process_versions(db, http_session, project_name, versions):
+async def process_versions(http_session, project_name, versions):
     latest_version = max(versions, key=parse_version)
 
-    # See if we have files for any downloads of the latest version
-    query = '''\
-        SELECT
-            EXISTS (
-                SELECT name
-                FROM downloads
-                WHERE project_name = :project
-                    AND project_version = :version
-                    AND indexed NOT NULL
-            ) AS is_indexed;
-    '''
-    is_indexed, = db.execute(
-        query,
-        {'project': project_name, 'version': latest_version},
-    ).fetchone()
-    if is_indexed:
-        logger.info("%r %s is indexed, skipping", project_name, latest_version)
-        return
+    with database.connect() as db:
+        # See if we have files for any downloads of the latest version
+        query = '''\
+            SELECT
+                EXISTS (
+                    SELECT name
+                    FROM downloads
+                    WHERE project_name = :project
+                        AND project_version = :version
+                        AND indexed NOT NULL
+                ) AS is_indexed;
+        '''
+        is_indexed, = db.execute(
+            query,
+            {'project': project_name, 'version': latest_version},
+        ).fetchone()
+        if is_indexed:
+            logger.info("%r %s is indexed, skipping", project_name, latest_version)
+            return
 
-    # List downloads
-    query = (
-        sqlalchemy.select([
-            database.downloads.c.name,
-            database.downloads.c.url,
-            database.downloads.c.type,
-        ])
-        .where(database.downloads.c.project_name == project_name)
-        .where(database.downloads.c.project_version == latest_version)
-    )
-    downloads = list(dict(row) for row in db.execute(query).fetchall())
-    if not downloads:
-        return
+        # List downloads
+        query = (
+            sqlalchemy.select([
+                database.downloads.c.name,
+                database.downloads.c.url,
+                database.downloads.c.type,
+            ])
+            .where(database.downloads.c.project_name == project_name)
+            .where(database.downloads.c.project_version == latest_version)
+        )
+        downloads = list(dict(row) for row in db.execute(query).fetchall())
+        if not downloads:
+            return
 
     # Pick a wheel
     for download in downloads:
@@ -209,43 +211,58 @@ async def process_versions(db, http_session, project_name, versions):
             download['_filesdb_priority'] = 0
     download = max(downloads, key=lambda d: d['_filesdb_priority'])
 
-    with contextlib.ExitStack() as stack:
-        transaction = stack.enter_context(db.begin())
+    with tempfile.TemporaryDirectory(prefix='filesdb_') as tmpdir:
+        # Download file
+        logger.info("Getting %s", download['url'])
+        filename = os.path.join(tmpdir, secure_filename(download['name']))
+        async with http_session.get(download['url']) as response:
+            if response.status != 200:
+                logger.warning("Download error %s: %s", response.status, download['name'])
 
-        with tempfile.TemporaryDirectory(prefix='filesdb_') as tmpdir:
-            # Download file
-            logger.info("Getting %s", download['url'])
-            filename = os.path.join(tmpdir, secure_filename(download['name']))
-            async with http_session.get(download['url']) as response:
-                if response.status != 200:
-                    logger.warning("Download error %s: %s", response.status, download['name'])
+            with open(filename, 'wb') as fp:
+                async for data, _ in response.content.iter_chunks():
+                    fp.write(data)
 
-                with open(filename, 'wb') as fp:
-                    async for data, _ in response.content.iter_chunks():
-                        fp.write(data)
-
-            try:
-                result = process_archive(db, project_name, download, filename)
-            except (tarfile.TarError, zipfile.BadZipFile):
-                result = 'bad archive'
-                logger.warning("Error reading %s as an archive", download['name'])
-
-            if result != 'yes':
-                logger.warning("Error: %s", result)
-
-                # Rollback transaction, start a new one
-                with stack.pop_all():
-                    transaction.rollback()
+        with database.connect() as db:
+            with contextlib.ExitStack() as stack:
                 transaction = stack.enter_context(db.begin())
 
-            # Mark download as indexed
-            query = (
-                database.downloads.update()
-                .where(database.downloads.c.project_name == project_name)
-                .where(database.downloads.c.name == download['name'])
-                .values(indexed=result)
-            )
-            db.execute(query)
+                try:
+                    result = process_archive(db, project_name, download, filename)
+                except (tarfile.TarError, zipfile.BadZipFile):
+                    result = 'bad archive'
+                    logger.warning("Error reading %s as an archive", download['name'])
+
+                if result != 'yes':
+                    logger.warning("Error: %s", result)
+
+                    # Rollback transaction, start a new one
+                    with stack.pop_all():
+                        transaction.rollback()
+                    transaction = stack.enter_context(db.begin())
+
+                # Mark download as indexed
+                query = (
+                    database.downloads.update()
+                    .where(database.downloads.c.project_name == project_name)
+                    .where(database.downloads.c.name == download['name'])
+                    .values(indexed=result)
+                )
+                db.execute(query)
+
+
+def combine_versions(projects):
+    current_project_name = projects[0][0]
+    versions = []
+    for project_name, version in projects:
+        if project_name == current_project_name:
+            versions.append(version)
+        else:
+            yield current_project_name, versions
+            current_project_name = project_name
+            versions = [version]
+    if versions:
+        yield current_project_name, versions
 
 
 async def amain():
@@ -263,17 +280,29 @@ async def amain():
             while projects:
                 logger.info("Got %d versions (%s - %s)", len(projects), projects[0][0], projects[-1][0])
 
-                current_project_name = projects[0][0]
-                versions = []
-                for project_name, version in projects:
-                    if project_name == current_project_name:
-                        versions.append(version)
-                    else:
-                        await process_versions(db, http_session, current_project_name, versions)
-                        current_project_name = project_name
-                        versions = [version]
-                if versions:
-                    await process_versions(db, http_session, current_project_name, versions)
+                project_iter = iter(combine_versions(projects))
+
+                # Start N tasks
+                tasks = {
+                    asyncio.ensure_future(process_versions(http_session, project_name, versions))
+                    for project_name, versions in itertools.islice(project_iter, CONCURRENT_REQUESTS)
+                }
+
+                while tasks:
+                    # Wait for any task to complete
+                    done, pending = await asyncio.wait(
+                        tasks,
+                        return_when=asyncio.FIRST_COMPLETED,
+                    )
+
+                    # Poll them
+                    for task in done:
+                        tasks.discard(task)
+                        task.result()
+
+                    # Schedule new tasks
+                    for project_name, versions in itertools.islice(project_iter, CONCURRENT_REQUESTS - len(tasks)):
+                        tasks.add(asyncio.ensure_future(process_versions(http_session, project_name, versions)))
 
                 # Get next batch
                 projects = db.execute(query, [projects[-1][0]]).fetchall()
