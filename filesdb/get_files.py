@@ -50,6 +50,9 @@ def process_file(db, download_name, filename, fp):
             break
         chunk = fp.read(4096)
 
+    # Sanitize filename a little bit
+    filename = filename.encode('utf-8', 'replace').decode('utf-8')
+
     # Insert into database
     db.execute(
         database.files.insert()
