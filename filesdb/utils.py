@@ -2,6 +2,10 @@ import os
 import re
 
 
+def normalize_project_name(name):
+    return name.replace('_', '-').lower()
+
+
 _windows_device_files = ('CON', 'AUX', 'COM1', 'COM2', 'COM3', 'COM4', 'LPT1',
                          'LPT2', 'LPT3', 'PRN', 'NUL')
 _not_ascii_re = re.compile(r'[^A-Za-z0-9_.-]')

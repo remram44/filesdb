@@ -4,6 +4,7 @@ import sqlalchemy
 from sqlalchemy.sql import functions
 
 from . import database
+from .utils import normalize_project_name
 
 
 logger = logging.getLogger('filesdb.web')
@@ -15,6 +16,7 @@ db_engine = database.get_engine()
 
 @app.route('/pypi/<project_name>')
 def pypi_project(project_name):
+    project_name = normalize_project_name(project_name)
     with db_engine.connect() as db:
         # Get versions
         versions = db.execute(
@@ -35,6 +37,7 @@ def pypi_project(project_name):
 
 @app.route('/pypi/<project_name>/<version>')
 def pypi_version(project_name, version):
+    project_name = normalize_project_name(project_name)
     with db_engine.connect() as db:
         # Get downloads
         downloads = db.execute(
@@ -83,6 +86,7 @@ def pypi_version(project_name, version):
 
 @app.route('/pypi/<project_name>/<version>/<path:filename>')
 def pypi_download(project_name, version, filename):
+    project_name = normalize_project_name(project_name)
     with db_engine.connect() as db:
         # Get download
         download = db.execute(

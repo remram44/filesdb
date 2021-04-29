@@ -28,6 +28,7 @@ import re
 import sys
 
 from . import database
+from .utils import normalize_project_name
 
 
 logger = logging.getLogger('filesdb.read_bigquery')
@@ -118,15 +119,17 @@ def main():
                 )
                 timestamp = datetime.fromisoformat(timestamp)
 
+                name = normalize_project_name(row['name'])
+
                 projects.insert(
-                    name=row['name'],
+                    name=name,
                 )
                 versions.insert(
-                    project_name=row['name'],
+                    project_name=name,
                     version=row['version'],
                 )
                 downloads.insert(
-                    project_name=row['name'],
+                    project_name=name,
                     project_version=row['version'],
                     name=row['filename'],
                     size_bytes=row['size'],
