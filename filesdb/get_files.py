@@ -229,7 +229,10 @@ async def process_versions(http_session, project_name, versions):
 
                 try:
                     result = process_archive(db, project_name, download, filename)
-                except (tarfile.TarError, zipfile.BadZipFile):
+                except (
+                    tarfile.TarError, zipfile.BadZipFile,
+                    EOFError,  # Can be raised by gzip
+                ):
                     result = 'bad archive'
                     logger.warning("Error reading %s as an archive", download['name'])
 
