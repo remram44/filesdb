@@ -11,13 +11,11 @@ logger = logging.getLogger('filesdb.web')
 
 app = Flask('filesdb')
 
-db_engine = database.get_engine()
-
 
 @app.route('/pypi/<project_name>')
 def pypi_project(project_name):
     project_name = normalize_project_name(project_name)
-    with db_engine.connect() as db:
+    with database.connect() as db:
         # Get versions
         versions = db.execute(
             sqlalchemy.select([
@@ -38,7 +36,7 @@ def pypi_project(project_name):
 @app.route('/pypi/<project_name>/<version>')
 def pypi_version(project_name, version):
     project_name = normalize_project_name(project_name)
-    with db_engine.connect() as db:
+    with database.connect() as db:
         # Get downloads
         downloads = db.execute(
             sqlalchemy.select([
@@ -91,7 +89,7 @@ def pypi_version(project_name, version):
 @app.route('/pypi/<project_name>/<version>/<path:filename>')
 def pypi_download(project_name, version, filename):
     project_name = normalize_project_name(project_name)
-    with db_engine.connect() as db:
+    with database.connect() as db:
         # Get download
         download = db.execute(
             sqlalchemy.select([database.downloads.c.indexed])
@@ -156,7 +154,7 @@ def file_hash(hash_function, digest):
     except KeyError:
         return jsonify({'error': "No such hash function"}), 404
 
-    with db_engine.connect() as db:
+    with database.connect() as db:
         files = db.execute(
             sqlalchemy.select([
                 database.files.c.download_name,
@@ -200,7 +198,7 @@ def file(file_prefix):
     if len(file_prefix) <= 2:
         return jsonify({'error': "File prefix too short"}), 400
 
-    with db_engine.connect() as db:
+    with database.connect() as db:
         files = db.execute(
             sqlalchemy.select([
                 database.files.c.download_name,
@@ -238,7 +236,7 @@ def file(file_prefix):
 
 @app.route('/')
 def index():
-    with db_engine.connect() as db:
+    with database.connect() as db:
         projects, downloads, downloads_indexed, files = db.execute(
             sqlalchemy.select([
                 (
