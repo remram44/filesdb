@@ -51,7 +51,7 @@ def process_file(db, download_name, filename, fp):
         chunk = fp.read(4096)
 
     # Insert into database
-    query = (
+    db.execute(
         database.files.insert()
         .values(
             download_name=download_name,
@@ -61,7 +61,6 @@ def process_file(db, download_name, filename, fp):
             hash_sha256=h_sha256.hexdigest(),
         )
     )
-    db.execute(query)
 
 
 def process_archive(db, project_name, download, filename):
@@ -159,18 +158,18 @@ async def process_versions(http_session, project_name, versions):
 
     with database.connect() as db:
         # See if we have files for any downloads of the latest version
-        query = '''\
-            SELECT
-                EXISTS (
-                    SELECT name
-                    FROM downloads
-                    WHERE project_name = :project
-                        AND project_version = :version
-                        AND indexed NOT NULL
-                ) AS is_indexed;
-        '''
         is_indexed, = db.execute(
-            query,
+            '''\
+                SELECT
+                    EXISTS (
+                        SELECT name
+                        FROM downloads
+                        WHERE project_name = :project
+                            AND project_version = :version
+                            AND indexed NOT NULL
+                    ) AS is_indexed;
+            '''
+            ,
             {'project': project_name, 'version': latest_version},
         ).fetchone()
         if is_indexed:
@@ -178,7 +177,7 @@ async def process_versions(http_session, project_name, versions):
             return
 
         # List downloads
-        query = (
+        downloads = db.execute(
             sqlalchemy.select([
                 database.downloads.c.name,
                 database.downloads.c.url,
@@ -186,8 +185,8 @@ async def process_versions(http_session, project_name, versions):
             ])
             .where(database.downloads.c.project_name == project_name)
             .where(database.downloads.c.project_version == latest_version)
-        )
-        downloads = list(dict(row) for row in db.execute(query).fetchall())
+        ).fetchall()
+        downloads = list(dict(row) for row in downloads)
         if not downloads:
             return
 
@@ -246,13 +245,12 @@ async def process_versions(http_session, project_name, versions):
                     transaction = stack.enter_context(db.begin())
 
                 # Mark download as indexed
-                query = (
+                db.execute(
                     database.downloads.update()
                     .where(database.downloads.c.project_name == project_name)
                     .where(database.downloads.c.name == download['name'])
                     .values(indexed=result)
                 )
-                db.execute(query)
 
 
 def combine_versions(projects):
@@ -273,11 +271,10 @@ async def amain():
     with database.connect() as db:
         async with aiohttp.ClientSession() as http_session:
             # Count projects
-            query = (
+            total_projects, = db.execute(
                 sqlalchemy.select([functions.count()])
                 .select_from(database.projects)
-            )
-            total_projects, = db.execute(query).one()
+            ).one()
 
             # List versions
             query = '''\

@@ -51,16 +51,14 @@ class BatchInserter(object):
 
             for dep in self.dependencies:
                 dep.flush()
-            query = self.query.values(values)
-            self.db.execute(query)
+            self.db.execute(self.query.values(values))
 
     def flush(self):
         if self.values:
             for dep in self.dependencies:
                 dep.flush()
 
-            query = self.query.values(self.values)
-            self.db.execute(query)
+            self.db.execute(self.query.values(self.values))
             self.values = []
 
 
