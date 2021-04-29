@@ -77,7 +77,11 @@ def pypi_version(project_name, version):
                     'python_version': row['python_version'],
                     'hash_md5': row['hash_md5'],
                     'hash_sha256': row['hash_sha256'],
-                    'indexed': row['indexed'],
+                    'indexed': (
+                        False if row['indexed'] is None else
+                        True if row['indexed'] == 'yes' else
+                        {'error': row['indexed']}
+                    ),
                 }
                 for row in downloads
             ],
@@ -113,8 +117,10 @@ def pypi_download(project_name, version, filename):
                 else:
                     return jsonify({'error': "No such download"}), 404
 
-        if not download[0]:
+        if download[0] is None:
             return jsonify({'error': "This download is not yet indexed"}), 404
+        elif download[0] != 'yes':
+            return jsonify({'error': download[0]})
 
         # Get files
         files = db.execute(
@@ -248,7 +254,7 @@ def index():
                 (
                     sqlalchemy.select(functions.count())
                     .select_from(database.downloads)
-                    .where(database.downloads.c.indexed)
+                    .where(database.downloads.c.indexed == 'yes')
                     .alias()
                 ),
                 (

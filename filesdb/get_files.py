@@ -217,7 +217,7 @@ async def process_versions(db, http_session, project_name, versions):
                     database.downloads.update()
                     .where(database.downloads.c.project_name == project_name)
                     .where(database.downloads.c.name == download['name'])
-                    .values(indexed=True)
+                    .values(indexed='yes')
                 )
                 db.execute(query)
 
