@@ -309,7 +309,10 @@ async def amain():
 
 
 def main():
-    logging.basicConfig(level=logging.INFO)
+    logging.basicConfig(
+        level=logging.INFO,
+        format="%(asctime)s %(levelname)s %(name)s: %(message)s",
+    )
 
     loop = asyncio.get_event_loop()
     loop.run_until_complete(amain())

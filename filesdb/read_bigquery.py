@@ -65,7 +65,10 @@ class BatchInserter(object):
 
 
 def main():
-    logging.basicConfig(level=logging.INFO)
+    logging.basicConfig(
+        level=logging.INFO,
+        format="%(asctime)s %(levelname)s %(name)s: %(message)s",
+    )
 
     if len(sys.argv) != 2 or not os.path.isfile(sys.argv[1]):
         print("Usage: read_bigquery.py <exported-table.csv>", file=sys.stderr)
