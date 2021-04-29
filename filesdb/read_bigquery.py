@@ -107,7 +107,7 @@ def main():
             )
             for i, row in enumerate(reader):
                 if i % 10000 == 0:
-                    print("%d / %d" % (i, total_rows))
+                    logger.info("%d / %d", i, total_rows)
 
                 if row['path']:
                     url = 'https://files.pythonhosted.org/packages/' + row['path']

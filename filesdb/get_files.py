@@ -10,6 +10,7 @@ import logging
 import os
 from pkg_resources import parse_version
 import sqlalchemy
+from sqlalchemy.sql import functions
 import tarfile
 import tempfile
 import zipfile
@@ -271,6 +272,13 @@ def combine_versions(projects):
 async def amain():
     with database.connect() as db:
         async with aiohttp.ClientSession() as http_session:
+            # Count projects
+            query = (
+                sqlalchemy.select([functions.count()])
+                .select_from(database.projects)
+            )
+            total_projects, = db.execute(query).one()
+
             # List versions
             query = '''\
                 SELECT project_name, version
@@ -279,6 +287,7 @@ async def amain():
                     SELECT name FROM projects WHERE name > ? ORDER BY name LIMIT 20
                 );
             '''
+            done_projects = 0
             projects = db.execute(query, ['']).fetchall()
             while projects:
                 logger.info("Got %d versions (%s - %s)", len(projects), projects[0][0], projects[-1][0])
@@ -302,6 +311,9 @@ async def amain():
                     for task in done:
                         tasks.discard(task)
                         task.result()
+                        done_projects += 1
+                        if done_projects % 100 == 0:
+                            logger.info("%d / %d", done_projects, total_projects)
 
                     # Schedule new tasks
                     for project_name, versions in itertools.islice(project_iter, CONCURRENT_REQUESTS - len(tasks)):
