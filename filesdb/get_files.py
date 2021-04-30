@@ -117,7 +117,8 @@ def process_archive(db, project_name, download, filename):
                     inserted += 1
     else:
         with tarfile.open(filename, 'r:*') as arch:
-            for member in set(arch.getmembers()):
+            members = {m.name: m for m in arch.getmembers()}.values()
+            for member in members:
                 if not member.isfile():
                     continue
                 if not check_top_level(member.name, project_name):
