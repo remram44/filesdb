@@ -292,7 +292,14 @@ def iter_project_versions(db):
 
 async def amain():
     with database.connect() as db:
-        async with aiohttp.ClientSession() as http_session:
+        async with aiohttp.ClientSession(
+            headers={'User-Agent': 'filesdb (https://github.com/VIDA-NYU/filesdb)'},
+            timeout=aiohttp.ClientTimeout(
+                total=900,
+                sock_connect=15,
+                sock_read=900,
+            ),
+        ) as http_session:
             # Count projects
             total_projects, = db.execute(
                 sqlalchemy.select([functions.count()])
