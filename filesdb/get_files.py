@@ -172,8 +172,7 @@ async def process_versions(http_session, project_name, versions):
                             AND project_version = :version
                             AND indexed NOT NULL
                     ) AS is_indexed;
-            '''
-            ,
+            ''',
             {'project': project_name, 'version': latest_version},
         ).fetchone()
         if is_indexed:

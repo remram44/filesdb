@@ -68,51 +68,94 @@ def main():
         format="%(asctime)s %(levelname)s %(name)s: %(message)s",
     )
 
-    if len(sys.argv) != 2 or not os.path.isfile(sys.argv[1]):
-        print("Usage: read_bigquery.py <exported-table.csv>", file=sys.stderr)
+    if len(sys.argv) == 3 and sys.argv[1] == 'csv':
+        filename = sys.argv[2]
+        if not os.path.isfile(sys.argv[2]):
+            print("Usage: read_bigquery.py <exported-table.csv>",
+                  file=sys.stderr)
+            sys.exit(2)
+
+        with open(filename, 'r') as fp:
+            total_rows = sum(1 for _ in fp) - 1
+
+        with open(filename, 'r') as fp:
+            reader = csv.DictReader(fp)
+
+            header = reader.fieldnames
+            assert header == [
+                'name', 'version',
+                'upload_time', 'filename', 'size',
+                'path',
+                'python_version', 'packagetype',
+                'md5_digest', 'sha256_digest',
+            ]
+
+            read_data(reader, total_rows)
+    elif (
+        len(sys.argv) == 3
+        and sys.argv[1] == 'query'
+        and os.environ.get('GOOGLE_APPLICATION_CREDENTIALS')
+    ):
+        from_time = datetime.fromisoformat(sys.argv[2])
+
+        from google.cloud import bigquery
+
+        client = bigquery.Client()
+        query = '''\
+            SELECT
+                name, version,
+                upload_time, filename, size,
+                path,
+                python_version, packagetype,
+                md5_digest, sha256_digest
+            FROM `the-psf.pypi.distribution_metadata`
+            WHERE upload_time > "{time}"
+            ORDER BY upload_time ASC
+        '''.format(
+            time=from_time.strftime('%Y-%m-%d %H:%M:%S')
+        )
+        job = client.query(query)
+        total_rows = sum(1 for _ in job.result())
+        iterator = job.result()
+        read_data(iterator, total_rows)
+    else:
+        print(
+            "Usage:\n  read_bigquery.py csv <exported-table.csv>\n"
+            + "  GOOGLE_APPLICATION_CREDENTIALS=account.json "
+            + "read_bigquery.py query <isodate>",
+            file=sys.stderr,
+        )
         sys.exit(2)
-    filename = sys.argv[1]
 
-    with open(filename, 'r') as fp:
-        total_rows = sum(1 for _ in fp) - 1
 
-    with open(filename, 'r') as fp:
-        reader = csv.DictReader(fp)
+def read_data(iterator, total_rows):
+    with database.connect() as db:
+        projects = BatchInserter(
+            db,
+            database.insert_or_ignore(database.projects),
+        )
+        versions = BatchInserter(
+            db,
+            database.insert_or_ignore(database.project_versions),
+            [projects],
+        )
+        downloads = BatchInserter(
+            db,
+            database.insert_or_ignore(database.downloads),
+            [projects],
+        )
+        for i, row in enumerate(iterator):
+            if i % 10000 == 0:
+                logger.info("%d / %d", i, total_rows)
 
-        header = reader.fieldnames
-        assert header == [
-            'name', 'version',
-            'upload_time', 'filename', 'size',
-            'path',
-            'python_version', 'packagetype',
-            'md5_digest', 'sha256_digest',
-        ]
+            if row['path']:
+                url = 'https://files.pythonhosted.org/packages/' + row['path']
+            else:
+                url = None
 
-        with database.connect() as db:
-            projects = BatchInserter(
-                db,
-                database.insert_or_ignore(database.projects),
-            )
-            versions = BatchInserter(
-                db,
-                database.insert_or_ignore(database.project_versions),
-                [projects],
-            )
-            downloads = BatchInserter(
-                db,
-                database.insert_or_ignore(database.downloads),
-                [projects],
-            )
-            for i, row in enumerate(reader):
-                if i % 10000 == 0:
-                    logger.info("%d / %d", i, total_rows)
-
-                if row['path']:
-                    url = 'https://files.pythonhosted.org/packages/' + row['path']
-                else:
-                    url = None
-
-                timestamp = row['upload_time']
+            timestamp = row['upload_time']
+            # datetime if coming from BigQuery, str if coming from CSV
+            if not isinstance(timestamp, datetime):
                 timestamp = re.sub(
                     r'^(20[0-9][0-9]-[0-9][0-9]-[0-9][0-9]) ([0-9][0-9]:[0-9][0-9]:[0-9][0-9])(?:\.[0-9]*)? UTC$',
                     r'\1T\2',
@@ -120,31 +163,31 @@ def main():
                 )
                 timestamp = datetime.fromisoformat(timestamp)
 
-                name = normalize_project_name(row['name'])
+            name = normalize_project_name(row['name'])
 
-                projects.insert(
-                    name=name,
-                )
-                versions.insert(
-                    project_name=name,
-                    version=row['version'],
-                )
-                downloads.insert(
-                    project_name=name,
-                    project_version=row['version'],
-                    name=row['filename'],
-                    size_bytes=row['size'],
-                    upload_time=timestamp,
-                    url=url,
-                    type=row['packagetype'],
-                    python_version=row['python_version'],
-                    hash_md5=row['md5_digest'],
-                    hash_sha256=row['sha256_digest'],
-                )
+            projects.insert(
+                name=name,
+            )
+            versions.insert(
+                project_name=name,
+                version=row['version'],
+            )
+            downloads.insert(
+                project_name=name,
+                project_version=row['version'],
+                name=row['filename'],
+                size_bytes=int(row['size']),
+                upload_time=timestamp,
+                url=url,
+                type=row['packagetype'],
+                python_version=row['python_version'],
+                hash_md5=row['md5_digest'],
+                hash_sha256=row['sha256_digest'],
+            )
 
-            projects.flush()
-            versions.flush()
-            downloads.flush()
+        projects.flush()
+        versions.flush()
+        downloads.flush()
 
 
 if __name__ == '__main__':
