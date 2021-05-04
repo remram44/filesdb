@@ -6,7 +6,7 @@ from sqlalchemy.sql import functions
 import sys
 
 from . import database
-from .get_files import combine_versions
+from .get_files import iter_project_versions
 
 
 logger = logging.getLogger('filesdb.guess_imports')
@@ -127,26 +127,13 @@ def main():
             .select_from(database.projects)
         ).one()
 
-        query = '''\
-            SELECT project_name, version
-            FROM project_versions
-            WHERE project_name IN (
-                SELECT name FROM projects WHERE name > ? ORDER BY name LIMIT 20
-            )
-        '''
+        # List versions
         done_projects = 0
-        projects = db.execute(query, ['']).fetchall()
-        while projects:
-            logger.info("Got %d versions (%s - %s)", len(projects), projects[0][0], projects[-1][0])
-
-            for project_name, versions in combine_versions(projects):
-                process_versions(project_name, versions)
-                done_projects += 1
-                if done_projects % 100 == 0:
-                    logger.info("%d / %d", done_projects, total_projects)
-
-            # Get next batch
-            projects = db.execute(query, [projects[-1][0]]).fetchall()
+        for project_name, versions in iter_project_versions(db):
+            process_versions(project_name, versions)
+            done_projects += 1
+            if done_projects % 100 == 0:
+                logger.info("%d / %d", done_projects, total_projects)
 
 
 if __name__ == '__main__':

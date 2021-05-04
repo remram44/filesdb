@@ -256,16 +256,36 @@ async def process_versions(http_session, project_name, versions):
                 )
 
 
-def combine_versions(projects):
-    current_project_name = projects[0][0]
+def iter_project_versions(db):
+    query = '''\
+        SELECT project_name, version
+        FROM project_versions
+        WHERE project_name > :project
+            OR (project_name = :project AND version > :version)
+    '''
+
+    current_project_name = None
     versions = []
-    for project_name, version in projects:
-        if project_name == current_project_name:
-            versions.append(version)
-        else:
-            yield current_project_name, versions
-            current_project_name = project_name
-            versions = [version]
+
+    projects = db.execute(query, {'project': '', 'version': ''}).fetchall()
+    while projects:
+        logger.info("Got %d versions (%s - %s)", len(projects), projects[0][0], projects[-1][0])
+        for project_name, version in projects:
+            if current_project_name is None:
+                current_project_name = project_name
+                versions.append(version)
+            elif project_name == current_project_name:
+                versions.append(version)
+            else:
+                yield current_project_name, versions
+                current_project_name = project_name
+                versions = [version]
+
+        projects = db.execute(
+            query,
+            {'project': current_project_name, 'version': versions[-1]},
+        ).fetchall()
+
     if versions:
         yield current_project_name, versions
 
@@ -280,47 +300,33 @@ async def amain():
             ).one()
 
             # List versions
-            query = '''\
-                SELECT project_name, version
-                FROM project_versions
-                WHERE project_name IN (
-                    SELECT name FROM projects WHERE name > ? ORDER BY name LIMIT 20
-                );
-            '''
+            projects = iter_project_versions(db)
+
+            # Start N tasks
+            tasks = {
+                asyncio.ensure_future(process_versions(http_session, project_name, versions))
+                for project_name, versions in itertools.islice(projects, CONCURRENT_REQUESTS)
+            }
+
             done_projects = 0
-            projects = db.execute(query, ['']).fetchall()
-            while projects:
-                logger.info("Got %d versions (%s - %s)", len(projects), projects[0][0], projects[-1][0])
+            while tasks:
+                # Wait for any task to complete
+                done, pending = await asyncio.wait(
+                    tasks,
+                    return_when=asyncio.FIRST_COMPLETED,
+                )
 
-                project_iter = iter(combine_versions(projects))
+                # Poll them
+                for task in done:
+                    tasks.discard(task)
+                    task.result()
+                    done_projects += 1
+                    if done_projects % 100 == 0:
+                        logger.info("%d / %d", done_projects, total_projects)
 
-                # Start N tasks
-                tasks = {
-                    asyncio.ensure_future(process_versions(http_session, project_name, versions))
-                    for project_name, versions in itertools.islice(project_iter, CONCURRENT_REQUESTS)
-                }
-
-                while tasks:
-                    # Wait for any task to complete
-                    done, pending = await asyncio.wait(
-                        tasks,
-                        return_when=asyncio.FIRST_COMPLETED,
-                    )
-
-                    # Poll them
-                    for task in done:
-                        tasks.discard(task)
-                        task.result()
-                        done_projects += 1
-                        if done_projects % 100 == 0:
-                            logger.info("%d / %d", done_projects, total_projects)
-
-                    # Schedule new tasks
-                    for project_name, versions in itertools.islice(project_iter, CONCURRENT_REQUESTS - len(tasks)):
-                        tasks.add(asyncio.ensure_future(process_versions(http_session, project_name, versions)))
-
-                # Get next batch
-                projects = db.execute(query, [projects[-1][0]]).fetchall()
+                # Schedule new tasks
+                for project_name, versions in itertools.islice(projects, CONCURRENT_REQUESTS - len(tasks)):
+                    tasks.add(asyncio.ensure_future(process_versions(http_session, project_name, versions)))
 
 
 def main():
