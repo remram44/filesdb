@@ -174,7 +174,7 @@ async def process_versions(http_session, project_name, versions):
                     ) AS is_indexed;
             ''',
             {'project': project_name, 'version': latest_version},
-        ).fetchone()
+        ).one()
         if is_indexed:
             logger.info("%r %s is indexed, skipping", project_name, latest_version)
             return

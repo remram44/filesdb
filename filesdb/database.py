@@ -27,7 +27,6 @@ projects = Table(
     Column('name', String, primary_key=True),
 )
 
-
 project_versions = Table(
     'project_versions',
     metadata,
@@ -73,7 +72,9 @@ python_imports = Table(
     Column('project_name', String, ForeignKey('projects.name'), nullable=False, primary_key=True),
     Column('deduced_from_project_version', String, nullable=False),
     Column('deduced_from_download_name', String, ForeignKey('downloads.name'), nullable=False),
-    Column('import', String, nullable=False, index=True),
+    # This should be NULL when we couldn't guess, but many DBMS don't allow
+    # nullable columns in primary key, so we use empty string
+    Column('import_path', String, nullable=False, primary_key=True),
 )
 
 
