@@ -1,3 +1,6 @@
+"""Guess the import names for Python packages, based on their files.
+"""
+
 from datetime import datetime
 import logging
 from pkg_resources import parse_version
@@ -119,6 +122,8 @@ def main():
             file=sys.stderr,
         )
         sys.exit(2)
+
+    # TODO: Only go over projects that have a download more recent than given date
 
     with database.connect() as db:
         # Count projects
