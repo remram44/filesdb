@@ -200,6 +200,8 @@ def file(file_prefix):
         return jsonify({'error': "File prefix too short"}), 400
 
     with database.connect() as db:
+        file_prefix_next = file_prefix[:-1] + chr(ord(file_prefix[-1]) + 1)
+
         files = db.execute(
             sqlalchemy.select([
                 database.files.c.download_name,
@@ -214,7 +216,8 @@ def file(file_prefix):
                 database.downloads,
                 database.files.c.download_name == database.downloads.c.name,
             ))
-            .where(database.files.c.name.startswith(file_prefix))
+            .where(database.files.c.name >= file_prefix)
+            .where(database.files.c.name < file_prefix_next)
             .limit(100)
         ).fetchall()
 
