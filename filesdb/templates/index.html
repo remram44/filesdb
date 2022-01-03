@@ -15,7 +15,7 @@
     <li><code>/files/sha1/&lt;sha1_hash&gt;</code> or <code>/files/sha256/&lt;sha256_hash&gt;</code>: List files that have the given digest, and the projects they come from</li>
   </ul>
   {% if statistics %}
-  <p>The database has {{ statistics.projects }} projects, {{ statistics.downloads }} downloads, {{ statistics.downloads_indexed }} downloads contents, {{ statistics.files }} files.</p>
+  <p>The database has {{ "{0:,}".format(statistics.projects) }} projects, {{ "{0:,}".format(statistics.downloads) }} downloads, {{ "{0:,}".format(statistics.downloads_indexed) }} downloads contents, {{ "{0:,}".format(statistics.files) }} files.</p>
   {% endif %}
 </body>
 </html>

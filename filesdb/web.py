@@ -275,9 +275,10 @@ def _compute_statistics():
     logger.info(
         "Statistics ready: %s",
         (
-            "The database has {projects} projects, "
-            + "{downloads} downloads, {downloads_indexed} downloads contents, "
-            + "{files} files."
+            "The database has {projects:,} projects, "
+            + "{downloads:,} downloads, "
+            + "{downloads_indexed:,} downloads contents, "
+            + "{files:,} files."
         ).format(**_statistics)
     )
 
