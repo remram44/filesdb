@@ -2,6 +2,7 @@ from flask import Flask, jsonify, render_template
 import logging
 import sqlalchemy
 from sqlalchemy.sql import functions
+import threading
 
 from . import database
 from .utils import normalize_project_name
@@ -234,8 +235,11 @@ def file(file_prefix):
         })
 
 
-@app.route('/')
-def index():
+_statistics = None
+
+
+def _compute_statistics():
+    global _statistics
     with database.connect() as db:
         projects, downloads, downloads_indexed, files = db.execute(
             sqlalchemy.select([
@@ -262,11 +266,29 @@ def index():
                 ),
             ])
         ).one()
+    _statistics = dict(
+        projects=projects,
+        downloads=downloads,
+        downloads_indexed=downloads_indexed,
+        files=files,
+    )
+    logger.info(
+        "Statistics ready: %s",
+        (
+            "The database has {projects} projects, "
+            + "{downloads} downloads, {downloads_indexed} downloads contents, "
+            + "{files} files."
+        ).format(**_statistics)
+    )
 
-        return render_template(
-            'index.html',
-            projects=projects,
-            downloads=downloads,
-            downloads_indexed=downloads_indexed,
-            files=files,
-        )
+
+_statistics_thread = threading.Thread(target=_compute_statistics, daemon=True)
+_statistics_thread.start()
+
+
+@app.route('/')
+def index():
+    return render_template(
+        'index.html',
+        statistics=_statistics,
+    )

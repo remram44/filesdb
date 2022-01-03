@@ -14,6 +14,8 @@
     <li><code>/files/prefix/&lt;file_prefix&gt;</code>: List files matching a given prefix, and the projects they come from</li>
     <li><code>/files/sha1/&lt;sha1_hash&gt;</code> or <code>/files/sha256/&lt;sha256_hash&gt;</code>: List files that have the given digest, and the projects they come from</li>
   </ul>
-  <p>The database has {{ projects }} projects, {{ downloads }} downloads, {{ downloads_indexed }} downloads contents, {{ files }} files.</p>
+  {% if statistics %}
+  <p>The database has {{ statistics.projects }} projects, {{ statistics.downloads }} downloads, {{ statistics.downloads_indexed }} downloads contents, {{ statistics.files }} files.</p>
+  {% endif %}
 </body>
 </html>
