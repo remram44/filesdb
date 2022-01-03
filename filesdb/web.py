@@ -241,31 +241,24 @@ _statistics = None
 def _compute_statistics():
     global _statistics
     with database.connect() as db:
-        projects, downloads, downloads_indexed, files = db.execute(
-            sqlalchemy.select([
-                (
-                    sqlalchemy.select(functions.count())
-                    .select_from(database.projects)
-                    .alias()
-                ),
-                (
-                    sqlalchemy.select(functions.count())
-                    .select_from(database.downloads)
-                    .alias()
-                ),
-                (
-                    sqlalchemy.select(functions.count())
-                    .select_from(database.downloads)
-                    .where(database.downloads.c.indexed == 'yes')
-                    .alias()
-                ),
-                (
-                    sqlalchemy.select(functions.count())
-                    .select_from(database.files)
-                    .alias()
-                ),
-            ])
+        projects, = db.execute(
+            sqlalchemy.select(functions.count())
+            .select_from(database.projects)
         ).one()
+        downloads, = db.execute(
+            sqlalchemy.select(functions.count())
+            .select_from(database.downloads)
+        ).one()
+        downloads_indexed, = db.execute(
+            sqlalchemy.select(functions.count())
+            .select_from(database.downloads)
+            .where(database.downloads.c.indexed == 'yes')
+        ).one()
+        files, = db.execute(
+            sqlalchemy.select(functions.count())
+            .select_from(database.files)
+        ).one()
+
     _statistics = dict(
         projects=projects,
         downloads=downloads,
