@@ -238,6 +238,26 @@ def file(file_prefix):
         })
 
 
+@app.route('/python/import/<name>')
+def python_import(name):
+    with database.connect() as db:
+        projects = db.execute(
+            sqlalchemy.select([
+                database.python_imports.c.project_name,
+            ])
+            .where(database.python_imports.c.import_path == name)
+        ).fetchall()
+
+    return jsonify({
+        'projects': [
+            {
+                'name': project['project_name']
+            }
+            for project in projects
+        ]
+    })
+
+
 _statistics = None
 
 
