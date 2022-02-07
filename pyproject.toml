@@ -20,8 +20,13 @@ classifiers = [
 [tool.poetry.dependencies]
 python = "^3.7"
 aiohttp = "^3.7.4"
-SQLAlchemy = "^1.4.11"
 Flask = "^1.1.2"
+SQLAlchemy = "^1.4.11"
+
+google-cloud-bigquery = {version = "*", optional = true}
+
+[tool.poetry.extras]
+bigquery = ["google-cloud-bigquery"]
 
 [tool.poetry.dev-dependencies]
 flake8 = "*"
