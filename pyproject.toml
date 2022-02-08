@@ -24,9 +24,11 @@ Flask = "^1.1.2"
 SQLAlchemy = "^1.4.11"
 
 google-cloud-bigquery = {version = "*", optional = true}
+uWSGI = {version = "*", optional = true}
 
 [tool.poetry.extras]
 bigquery = ["google-cloud-bigquery"]
+uwsgi = ["uWSGI"]
 
 [tool.poetry.dev-dependencies]
 flake8 = "*"
