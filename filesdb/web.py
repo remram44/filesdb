@@ -1,5 +1,6 @@
-from flask import Flask, jsonify, render_template
+from flask import Flask, jsonify, redirect, render_template, url_for
 import logging
+from pkg_resources import parse_version
 import sqlalchemy
 from sqlalchemy.sql import functions
 import threading
@@ -32,6 +33,66 @@ def pypi_project(project_name):
             'project': project_name,
             'versions': [row[0] for row in versions],
         })
+
+
+@app.route('/pypi/<project_name>/latest')
+def pypi_version_latest(project_name):
+    project_name = normalize_project_name(project_name)
+    with database.connect() as db:
+        # Get versions
+        versions = db.execute(
+            sqlalchemy.select([
+                database.project_versions.c.version,
+            ])
+            .where(database.project_versions.c.project_name == project_name)
+        ).fetchall()
+
+        if not versions:
+            return jsonify({'error': "No such project"}), 404
+
+        latest_version = max((v[0] for v in versions), key=parse_version)
+        return redirect(
+            url_for('.pypi_version', project_name=project_name, version=latest_version),
+            302,
+        )
+
+
+@app.route('/pypi/<project_name>/files')
+def pypi_version_files(project_name):
+    project_name = normalize_project_name(project_name)
+    with database.connect() as db:
+        # Get versions
+        versions = db.execute(
+            sqlalchemy.select([
+                database.project_versions.c.version,
+            ])
+            .where(database.project_versions.c.project_name == project_name)
+        ).fetchall()
+
+        if not versions:
+            return jsonify({'error': "No such project"}), 404
+
+        latest_version = max((v[0] for v in versions), key=parse_version)
+
+        # Find an indexed download
+        download = db.execute(
+            sqlalchemy.select([database.downloads.c.name])
+            .where(database.downloads.c.project_name == project_name)
+            .where(database.downloads.c.project_version == latest_version)
+            .where(database.downloads.c.indexed == 'yes')
+        ).fetchone()
+        if download is None:
+            return jsonify({'error': "No indexed download"}), 503
+
+        return redirect(
+            url_for(
+                '.pypi_download',
+                project_name=project_name,
+                version=latest_version,
+                filename=download[0],
+            ),
+            302,
+        )
 
 
 @app.route('/pypi/<project_name>/<version>')
