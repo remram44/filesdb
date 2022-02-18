@@ -11,6 +11,7 @@ import os
 from pkg_resources import parse_version
 import sqlalchemy
 from sqlalchemy.sql import functions
+import sys
 import tarfile
 import tempfile
 import zipfile
@@ -256,7 +257,7 @@ async def process_versions(http_session, project_name, versions):
                 )
 
 
-def iter_project_versions(db):
+def iter_project_versions(db, start_from=None):
     query = '''\
         SELECT project_name, version
         FROM project_versions
@@ -267,7 +268,7 @@ def iter_project_versions(db):
     current_project_name = None
     versions = []
 
-    projects = db.execute(query, {'project': '', 'version': ''}).fetchall()
+    projects = db.execute(query, {'project': start_from, 'version': ''}).fetchall()
     while projects:
         logger.info("Got %d versions (%s - %s)", len(projects), projects[0][0], projects[-1][0])
         for project_name, version in projects:
@@ -290,7 +291,7 @@ def iter_project_versions(db):
         yield current_project_name, versions
 
 
-async def amain():
+async def amain(start_from):
     with database.connect() as db:
         async with aiohttp.ClientSession(
             headers={'User-Agent': 'filesdb (https://github.com/VIDA-NYU/filesdb)'},
@@ -306,8 +307,18 @@ async def amain():
                 .select_from(database.projects)
             ).one()
 
+            if start_from is None:
+                done_projects = 0
+            else:
+                # Count projects we're not processing
+                done_projects, = db.execute(
+                    sqlalchemy.select([functions.count()])
+                    .select_from(database.projects)
+                    .where(database.projects.c.name < start_from)
+                ).one()
+
             # List versions
-            projects = iter_project_versions(db)
+            projects = iter_project_versions(db, start_from)
 
             # Start N tasks
             tasks = {
@@ -315,7 +326,6 @@ async def amain():
                 for project_name, versions in itertools.islice(projects, CONCURRENT_REQUESTS)
             }
 
-            done_projects = 0
             while tasks:
                 # Wait for any task to complete
                 done, pending = await asyncio.wait(
@@ -336,15 +346,21 @@ async def amain():
                     tasks.add(asyncio.ensure_future(process_versions(http_session, project_name, versions)))
 
 
-def main():
+def main(start_from):
     logging.basicConfig(
         level=logging.INFO,
         format="%(asctime)s %(levelname)s %(name)s: %(message)s",
     )
 
     loop = asyncio.get_event_loop()
-    loop.run_until_complete(amain())
+    loop.run_until_complete(amain(start_from))
 
 
 if __name__ == '__main__':
-    main()
+    if len(sys.argv) == 1:
+        start_from = None
+    elif len(sys.argv) == 2:
+        start_from = sys.argv[1]
+    else:
+        raise AssertionError("Too many arguments")
+    main(start_from)
