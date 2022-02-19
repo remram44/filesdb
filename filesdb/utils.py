@@ -1,5 +1,7 @@
+import functools
 import os
 import re
+import traceback
 
 
 def normalize_project_name(name):
@@ -9,6 +11,29 @@ def normalize_project_name(name):
 _windows_device_files = ('CON', 'AUX', 'COM1', 'COM2', 'COM3', 'COM4', 'LPT1',
                          'LPT2', 'LPT3', 'PRN', 'NUL')
 _not_ascii_re = re.compile(r'[^A-Za-z0-9_.-]')
+
+
+def retry(retries, logger):
+    def wrap(func):
+        @functools.wraps(func)
+        async def wrapper(*args, **kwargs):
+            for _ in range(retries - 1):
+                try:
+                    return await func(*args, **kwargs)
+                except Exception as e:
+                    logger.warning(
+                        "Error running %s: %s",
+                        func,
+                        ''.join(
+                            traceback.format_exception_only(type(e), e),
+                        ).rstrip(),
+                    )
+
+            return await func(*args, **kwargs)
+
+        return wrapper
+
+    return wrap
 
 
 def secure_filename(name):

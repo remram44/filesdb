@@ -17,7 +17,7 @@ import tempfile
 import zipfile
 
 from . import database
-from .utils import secure_filename
+from .utils import retry, secure_filename
 
 
 PROJECT_CHUNK_SIZE = 500
@@ -158,6 +158,7 @@ def process_archive(db, project_name, download, filename):
     return 'yes'
 
 
+@retry(3, logger)
 async def process_versions(http_session, project_name, versions):
     latest_version = max(versions, key=parse_version)
 
