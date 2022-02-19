@@ -269,7 +269,7 @@ def iter_project_versions(db, start_from=None):
     current_project_name = None
     versions = []
 
-    projects = db.execute(query, {'project': start_from, 'version': ''}).fetchall()
+    projects = db.execute(query, {'project': start_from or '', 'version': ''}).fetchall()
     while projects:
         logger.info("Got %d versions (%s - %s)", len(projects), projects[0][0], projects[-1][0])
         for project_name, version in projects:
