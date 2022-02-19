@@ -1,6 +1,7 @@
 import functools
 import os
 import re
+import time
 import traceback
 
 
@@ -28,6 +29,7 @@ def retry(retries, logger):
                             traceback.format_exception_only(type(e), e),
                         ).rstrip(),
                     )
+                time.sleep(5)
 
             return await func(*args, **kwargs)
 
