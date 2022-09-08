@@ -74,10 +74,10 @@ def process_archive(db, project_name, download, filename):
         with zipfile.ZipFile(filename) as arch:
             for member in set(arch.namelist()):
                 if (
-                        '.dist-info/' in member
-                        or member.startswith('EGG-INFO')
-                        or member.endswith('.dist-info')
-                        or member in IGNORED_FILES
+                    '.dist-info/' in member
+                    or member.startswith('EGG-INFO')
+                    or member.endswith('.dist-info')
+                    or member in IGNORED_FILES
                 ):
                     continue
                 with arch.open(member) as fp:
@@ -96,9 +96,9 @@ def process_archive(db, project_name, download, filename):
                     )
                     return 'wrong structure'
                 if (
-                        '.egg-info/' in member
-                        or member.endswith('.egg-info')
-                        or member in IGNORED_FILES
+                    '.egg-info/' in member
+                    or member.endswith('.egg-info')
+                    or member in IGNORED_FILES
                 ):
                     continue
                 try:
@@ -130,10 +130,10 @@ def process_archive(db, project_name, download, filename):
                     )
                     return 'wrong structure'
                 if (
-                        '.egg-info/' in member.name
-                        or member.name.endswith('.egg-info')
-                        or member.name == 'PKG-INFO'
-                        or member.name in IGNORED_FILES
+                    '.egg-info/' in member.name
+                    or member.name.endswith('.egg-info')
+                    or member.name == 'PKG-INFO'
+                    or member.name in IGNORED_FILES
                 ):
                     continue
                 try:
