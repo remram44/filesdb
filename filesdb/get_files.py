@@ -9,6 +9,7 @@ import itertools
 import logging
 import os
 from pkg_resources import parse_version
+import re
 import sqlalchemy
 from sqlalchemy.sql import functions
 import sys
@@ -25,6 +26,8 @@ PROJECT_CHUNK_SIZE = 500
 CONCURRENT_REQUESTS = 5
 
 IGNORED_FILES = ('PKG-INFO', 'MANIFEST.in', 'setup.cfg')
+
+WHEEL_METADATA_MAX_BYTES = 10_000  # 10 KB
 
 
 logger = logging.getLogger('filesdb.get_files')
@@ -67,6 +70,60 @@ def process_file(db, download_name, filename, fp):
     )
 
 
+def process_wheel_metadata(db, project_name, download_name, fp):
+    # Read the whole file, if it isn't too big
+    wheel_metadata = fp.read(WHEEL_METADATA_MAX_BYTES)
+    if fp.tell() == WHEEL_METADATA_MAX_BYTES:
+        # File is too big
+        size = fp.seek(0, os.SEEK_END)
+        logger.warning(
+            "Wheel metadata from download %s is too big (%s bytes)",
+            download_name,
+            size,
+        )
+        return
+
+    # Insert as a blob
+    db.execute(
+        database.downloads.update()
+        .where(database.downloads.c.project_name == project_name)
+        .where(database.downloads.c.name == download_name)
+        .values(wheel_metadata=wheel_metadata)
+    )
+
+    # Extract fields
+    for line in wheel_metadata.splitlines():
+        try:
+            line = line.decode('utf-8').strip()
+        except UnicodeDecodeError:
+            logger.warning(
+                "Wheel metadata from download %s is invalid utf-8",
+                download_name,
+            )
+            return
+
+        # An empty line separates the fields from the description
+        if not line:
+            break
+
+        parts = line.split(':', 1)
+        if len(parts) != 2:
+            logger.warning(
+                "Wheel medata from download %s has invalid format",
+                download_name,
+            )
+            return
+
+        db.execute(
+            database.wheel_metadata_fields.insert()
+            .values(
+                download_name=download_name,
+                key=parts[0].strip(),
+                value=parts[1].strip()
+            )
+        )
+
+
 def process_archive(db, project_name, download, filename):
     inserted = 0
 
@@ -74,6 +131,18 @@ def process_archive(db, project_name, download, filename):
         with zipfile.ZipFile(filename) as arch:
             for member in set(arch.namelist()):
                 if (
+                    filename.endswith('.whl')
+                    and re.match(r'^[^\\/]+\.dist-info[\\/]METADATA$', member)
+                ):
+                    with arch.open(member) as fp:
+                        process_wheel_metadata(
+                            db,
+                            project_name,
+                            download['name'],
+                            fp,
+                        )
+                    continue
+                elif (
                     '.dist-info/' in member
                     or member.startswith('EGG-INFO')
                     or member.endswith('.dist-info')

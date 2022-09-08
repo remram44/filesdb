@@ -6,7 +6,7 @@ from sqlalchemy import Column, ForeignKey, MetaData, Table
 import sqlalchemy.dialects.postgresql
 import sqlalchemy.dialects.sqlite
 import sqlalchemy.event
-from sqlalchemy.types import DateTime, Integer, String
+from sqlalchemy.types import BLOB, DateTime, Integer, String
 
 
 logger = logging.getLogger(__name__)
@@ -54,6 +54,7 @@ downloads = Table(
     # 'yes': indexed
     # otherwise: error code
     Column('indexed', String, nullable=True, index=True),
+    Column('wheel_metadata', BLOB, nullable=True)
 )
 
 files = Table(
@@ -64,6 +65,14 @@ files = Table(
     Column('size_bytes', Integer, nullable=False),
     Column('hash_sha1', String, nullable=False, index=True),
     Column('hash_sha256', String, nullable=False, index=True),
+)
+
+wheel_metadata_fields = Table(
+    'wheel_metadata_fields',
+    metadata,
+    Column('download_name', String, ForeignKey('downloads.name')),
+    Column('key', String, nullable=False, index=True),
+    Column('value', String, nullable=False),
 )
 
 python_imports = Table(
