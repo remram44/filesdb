@@ -39,37 +39,6 @@ def check_top_level(filename, project_name):
     return filename.startswith(project_name)
 
 
-def process_file(db, download_name, filename, fp):
-    # Compute hashes
-    h_sha1 = hashlib.sha1()
-    h_sha256 = hashlib.sha256()
-    size = 0
-
-    chunk = fp.read(4096)
-    while chunk:
-        h_sha1.update(chunk)
-        h_sha256.update(chunk)
-        size += len(chunk)
-        if len(chunk) != 4096:
-            break
-        chunk = fp.read(4096)
-
-    # Sanitize filename a little bit
-    filename = filename.encode('utf-8', 'replace').decode('utf-8')
-
-    # Insert into database
-    db.execute(
-        database.files.insert()
-        .values(
-            download_name=download_name,
-            name=filename,
-            size_bytes=size,
-            hash_sha1=h_sha1.hexdigest(),
-            hash_sha256=h_sha256.hexdigest(),
-        )
-    )
-
-
 def process_wheel_metadata(db, project_name, download_name, fp):
     # Read the whole file, if it isn't too big
     wheel_metadata = fp.read(WHEEL_METADATA_MAX_BYTES)
@@ -125,8 +94,6 @@ def process_wheel_metadata(db, project_name, download_name, fp):
 
 
 def process_archive(db, project_name, download, filename):
-    inserted = 0
-
     if filename.endswith(('.whl', '.egg')):
         with zipfile.ZipFile(filename) as arch:
             for member in set(arch.namelist()):
@@ -149,81 +116,7 @@ def process_archive(db, project_name, download, filename):
                     or member in IGNORED_FILES
                 ):
                     continue
-                with arch.open(member) as fp:
-                    process_file(db, download['name'], member, fp)
-                    inserted += 1
-    elif filename.endswith('.zip'):
-        with zipfile.ZipFile(filename) as arch:
-            for member in set(arch.namelist()):
-                if member.endswith('/'):  # Directory
-                    continue
-                if not check_top_level(member, project_name):
-                    logger.warning(
-                        "File %s from download %s doesn't have the expected top-level directory",
-                        member,
-                        download['name'],
-                    )
-                    return 'wrong structure'
-                if (
-                    '.egg-info/' in member
-                    or member.endswith('.egg-info')
-                    or member in IGNORED_FILES
-                ):
-                    continue
-                try:
-                    idx = member.index('/')
-                except ValueError:
-                    logger.warning(
-                        "File %s from download %s doesn't have the expected top-level directory",
-                        member,
-                        download['name'],
-                    )
-                    return 'wrong structure'
-                name = member[idx + 1:]
-                if name in IGNORED_FILES:
-                    continue
-                with arch.open(member) as fp:
-                    process_file(db, download['name'], name, fp)
-                    inserted += 1
-    else:
-        with tarfile.open(filename, 'r:*') as arch:
-            members = {m.name: m for m in arch.getmembers()}.values()
-            for member in members:
-                if not member.isfile():
-                    continue
-                if not check_top_level(member.name, project_name):
-                    logger.warning(
-                        "File %s from download %s doesn't have the expected top-level directory",
-                        member.name,
-                        download['name'],
-                    )
-                    return 'wrong structure'
-                if (
-                    '.egg-info/' in member.name
-                    or member.name.endswith('.egg-info')
-                    or member.name == 'PKG-INFO'
-                    or member.name in IGNORED_FILES
-                ):
-                    continue
-                try:
-                    idx = member.name.index('/')
-                except ValueError:
-                    logger.warning(
-                        "File %s from download %s doesn't have the expected top-level directory",
-                        member.name,
-                        download['name'],
-                    )
-                    return 'wrong structure'
-                name = member.name[idx + 1:]
-                if name in IGNORED_FILES:
-                    continue
-                with arch.extractfile(member) as fp:
-                    process_file(db, download['name'], name, fp)
-                    inserted += 1
 
-    if inserted == 0:
-        return 'no files'
-    logger.info("Got %d files", inserted)
     return 'yes'
 
 
@@ -241,7 +134,7 @@ async def process_versions(http_session, project_name, versions):
                         FROM downloads
                         WHERE project_name = :project
                             AND project_version = :version
-                            AND indexed NOT NULL
+                            AND wheel_metadata IS NOT NULL
                     ) AS is_indexed;
             ''',
             {'project': project_name, 'version': latest_version},
@@ -259,6 +152,8 @@ async def process_versions(http_session, project_name, versions):
             ])
             .where(database.downloads.c.project_name == project_name)
             .where(database.downloads.c.project_version == latest_version)
+            .where(database.downloads.c.indexed == 'yes')
+            .where(database.downloads.c.wheel_metadata == None)
         ).fetchall()
         downloads = list(dict(row) for row in downloads)
         if not downloads:
@@ -317,14 +212,6 @@ async def process_versions(http_session, project_name, versions):
                     with stack.pop_all():
                         transaction.rollback()
                     transaction = stack.enter_context(db.begin())
-
-                # Mark download as indexed
-                db.execute(
-                    database.downloads.update()
-                    .where(database.downloads.c.project_name == project_name)
-                    .where(database.downloads.c.name == download['name'])
-                    .values(indexed=result)
-                )
 
 
 def iter_project_versions(db, start_from=None):
