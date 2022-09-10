@@ -27,7 +27,7 @@ CONCURRENT_REQUESTS = 5
 
 IGNORED_FILES = ('PKG-INFO', 'MANIFEST.in', 'setup.cfg')
 
-WHEEL_METADATA_MAX_BYTES = 10_000  # 10 KB
+WHEEL_METADATA_MAX_BYTES = 50_000  # 50 KB
 
 
 logger = logging.getLogger('filesdb.get_files')
