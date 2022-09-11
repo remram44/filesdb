@@ -241,7 +241,7 @@ async def process_versions(http_session, project_name, versions):
                         FROM downloads
                         WHERE project_name = :project
                             AND project_version = :version
-                            AND indexed NOT NULL
+                            AND indexed IS NOT NULL
                     ) AS is_indexed;
             ''',
             {'project': project_name, 'version': latest_version},
