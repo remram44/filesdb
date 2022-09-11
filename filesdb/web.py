@@ -1,4 +1,4 @@
-from flask import Flask, jsonify, redirect, render_template, url_for
+from flask import Flask, Response, jsonify, redirect, render_template, url_for
 import logging
 from pkg_resources import parse_version
 import sqlalchemy
@@ -148,39 +148,53 @@ def pypi_version(project_name, version):
         })
 
 
-@app.route('/pypi/<project_name>/<version>/<path:filename>')
-def pypi_download(project_name, version, filename):
-    project_name = normalize_project_name(project_name)
-    with database.connect() as db:
-        # Get download
-        download = db.execute(
-            sqlalchemy.select([database.downloads.c.indexed])
-            .where(database.downloads.c.name == filename)
-            .where(database.downloads.c.project_name == project_name)
-            .where(database.downloads.c.project_version == version)
-        ).fetchone()
-        if download is None:
-            project = db.execute(
-                sqlalchemy.select([database.projects.c.name])
-                .where(database.projects.c.name == project_name)
-            ).fetchone()
-            if project is None:
-                return jsonify({'error': "No such project"}), 404
-            else:
-                version = db.execute(
-                    sqlalchemy.select([database.project_versions.c.version])
-                    .where(database.project_versions.c.project_name == project_name)
-                    .where(database.project_versions.c.version == version)
-                ).fetchone()
-                if version is None:
-                    return jsonify({'error': "No such version"}), 404
-                else:
-                    return jsonify({'error': "No such download"}), 404
+class GetDownloadError(KeyError):
+    pass
 
-        if download[0] is None:
-            return jsonify({'error': "This download is not yet indexed"}), 404
-        elif download[0] != 'yes':
-            return jsonify({'error': download[0]})
+
+def get_download(db, project_name, version, filename, columns=[]):
+    project_name = normalize_project_name(project_name)
+
+    # Get download
+    download = db.execute(
+        sqlalchemy.select([database.downloads.c.indexed] + columns)
+        .where(database.downloads.c.name == filename)
+        .where(database.downloads.c.project_name == project_name)
+        .where(database.downloads.c.project_version == version)
+    ).fetchone()
+    if download is None:
+        project = db.execute(
+            sqlalchemy.select([database.projects.c.name])
+            .where(database.projects.c.name == project_name)
+        ).fetchone()
+        if project is None:
+            raise GetDownloadError("No such project")
+        else:
+            version = db.execute(
+                sqlalchemy.select([database.project_versions.c.version])
+                .where(database.project_versions.c.project_name == project_name)
+                .where(database.project_versions.c.version == version)
+            ).fetchone()
+            if version is None:
+                raise GetDownloadError("No such version")
+            else:
+                raise GetDownloadError("No such download")
+
+    if download[0] is None:
+        return jsonify({'error': "This download is not yet indexed"}), 404
+    elif download[0] != 'yes':
+        return jsonify({'error': download[0]})
+
+    return download[1:]
+
+
+@app.route('/pypi/<project_name>/<version>/<filename>')
+def pypi_download(project_name, version, filename):
+    with database.connect() as db:
+        try:
+            get_download(db, project_name, version, filename)
+        except GetDownloadError as e:
+            return jsonify({'error': e.args[0]}), 404
 
         # Get files
         files = db.execute(
@@ -204,6 +218,20 @@ def pypi_download(project_name, version, filename):
                 for row in files
             ],
         })
+
+
+@app.route('/pypi/<project_name>/<version>/<filename>/wheel_metadata')
+def wheel_metadata(project_name, version, filename):
+    with database.connect() as db:
+        try:
+            wheel_metadata, = get_download(
+                db, project_name, version, filename,
+                columns=[database.downloads.c.wheel_metadata],
+            )
+        except GetDownloadError as e:
+            return jsonify({'error': e.args[0]}), 404
+
+    return Response(wheel_metadata, content_type='text/plain')
 
 
 @app.route('/files/<hash_function>/<digest>')
