@@ -32,7 +32,6 @@ uwsgi = ["uWSGI"]
 
 [tool.poetry.dev-dependencies]
 flake8 = "*"
-readme_renderer = "*"
 
 [build-system]
 requires = ["poetry-core>=1.0.0"]
