@@ -18,4 +18,4 @@ The database is available via a Web API at ``https://filesdb.reprozip.org/``. Tr
 Data
 ----
 
-You can also download the whole data (SQLite3 database) from OSF: https://osf.io/7g2y8/
+You can also download the whole data (compressed SQLite3 database): https://f004.backblazeb2.com/file/rr4-files/filesdb.sqlite3.zst
