@@ -42,7 +42,7 @@ downloads = Table(
     # Full name e.g. `reprozip-1.0.16-cp27-cp27m-manylinux2010_x86_64.whl`
     Column('name', String, primary_key=True),
     Column('size_bytes', Integer, nullable=False),
-    Column('upload_time', DateTime, nullable=False),
+    Column('upload_time', DateTime, nullable=False, index=True),
     # Download URL on files.pythonhosted.org
     Column('url', String, nullable=True),
     # Type as reported by API, 'bdist_wheel', 'sdist'
