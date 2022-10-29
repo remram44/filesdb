@@ -477,7 +477,7 @@ name = "setuptools"
 version = "65.3.0"
 description = "Easily download, build, install, upgrade, and uninstall Python packages"
 category = "main"
-optional = true
+optional = false
 python-versions = ">=3.7"
 
 [package.extras]
@@ -591,7 +591,7 @@ uwsgi = ["uWSGI"]
 [metadata]
 lock-version = "1.1"
 python-versions = "^3.8"
-content-hash = "eaadb399f59cab3b224b7671e94f635745d1040fe36b5c9b8cb9ad61b9ce8fbd"
+content-hash = "cf670c5ea652ed667eb919981c6bad883d08232b64bed9bc092d3440ab0d6551"
 
 [metadata.files]
 aiohttp = [

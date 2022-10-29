@@ -25,6 +25,7 @@ SQLAlchemy = "^1.4.11"
 
 google-cloud-bigquery = {version = "*", optional = true}
 uWSGI = {version = "*", optional = true}
+setuptools = "*"
 
 [tool.poetry.extras]
 bigquery = ["google-cloud-bigquery"]
