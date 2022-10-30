@@ -18,13 +18,14 @@ classifiers = [
 ]
 
 [tool.poetry.dependencies]
-python = "^3.7"
+python = "^3.8"
 aiohttp = "^3.7.4"
-Flask = "^1.1.2"
+Flask = "^2.2"
 SQLAlchemy = "^1.4.11"
 
 google-cloud-bigquery = {version = "*", optional = true}
 uWSGI = {version = "*", optional = true}
+setuptools = "*"
 
 [tool.poetry.extras]
 bigquery = ["google-cloud-bigquery"]
@@ -32,8 +33,7 @@ uwsgi = ["uWSGI"]
 
 [tool.poetry.dev-dependencies]
 flake8 = "*"
-readme_renderer = "*"
 
 [build-system]
-requires = ["poetry>=0.12"]
-build-backend = "poetry.masonry.api"
+requires = ["poetry-core>=1.0.0"]
+build-backend = "poetry.core.masonry.api"
