@@ -16,6 +16,7 @@ import sys
 import tarfile
 import tempfile
 import zipfile
+import zlib
 
 from . import database
 from .utils import retry, secure_filename
@@ -304,7 +305,7 @@ async def process_versions(http_session, project_name, versions):
                 try:
                     result = process_archive(db, project_name, download, filename)
                 except (
-                    tarfile.TarError, zipfile.BadZipFile,
+                    tarfile.TarError, zipfile.BadZipFile, zlib.error,
                     EOFError,  # Can be raised by gzip
                 ):
                     result = 'bad archive'
