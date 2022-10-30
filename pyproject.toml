@@ -9,8 +9,8 @@ authors = [
     "Remi Rampin <remi@rampin.org>"
 ]
 
-repository = "https://github.com/VIDA-NYU/filesdb"
-homepage = "https://github.com/VIDA-NYU/filesdb"
+repository = "https://github.com/remram44/filesdb"
+homepage = "https://github.com/remram44/filesdb"
 
 keywords = ["files", "database", "package", "package manager", "pip", "pypi"]
 

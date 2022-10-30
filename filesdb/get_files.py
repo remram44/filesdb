@@ -365,7 +365,7 @@ def iter_project_versions(db, start_from=None):
 async def amain(start_from):
     with database.connect() as db:
         async with aiohttp.ClientSession(
-            headers={'User-Agent': 'filesdb (https://github.com/VIDA-NYU/filesdb)'},
+            headers={'User-Agent': 'filesdb (https://github.com/remram44/filesdb)'},
             timeout=aiohttp.ClientTimeout(
                 total=900,
                 sock_connect=15,
