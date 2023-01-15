@@ -15,25 +15,44 @@ from .get_files import iter_project_versions
 logger = logging.getLogger('filesdb.guess_imports')
 
 
-def process_versions(project_name, versions):
+def import_matches_project(project_name, import_name):
+    # Start from the project name, possibly with a 'python-' prefix removed
+    project_names = {project_name}
+    if project_name.startswith('python-'):
+        project_names.add(project_name[7:])
+
+    # Replace - with _
+    project_names = {name.replace('-', '_') for name in project_names}
+
+    # TODO: Do something about namespace packages?
+
+    return any(name == import_name for name in project_names)
+
+
+def process_versions(project_name, versions, stats):
     latest_version = max(versions, key=parse_version)
 
     with database.connect() as db:
         # See if it has been processed
-        is_guessed, = db.execute(
+        prev_import_names = list(db.execute(
             '''\
-                SELECT
-                    EXISTS (
-                        SELECT project_name
-                        FROM python_imports
-                        WHERE project_name = :project
-                            AND deduced_from_project_version = :version
-                    ) AS is_guessed
+                SELECT import_path
+                FROM python_imports
+                WHERE project_name = :project
+                    AND deduced_from_project_version = :version
             ''',
             {'project': project_name, 'version': latest_version},
-        ).one()
-        if is_guessed:
+        ))
+        if prev_import_names:
             logger.debug("%r %s is guessed, skipping", project_name, latest_version)
+            if not any(
+                import_matches_project(project_name, i[0])
+                for i in prev_import_names
+            ):
+                stats[False] += 1
+            elif len(prev_import_names) == 1:
+                stats[True] += 1
+            # If there's a match but there's other imports, don't count it
             return
 
         # Find download
@@ -65,6 +84,16 @@ def process_versions(project_name, versions):
                 else:
                     import_name = filename[:-3]
                 import_names.add(import_name)
+
+        if not any(
+            import_matches_project(project_name, i)
+            for i in import_names
+        ):
+            stats[False] += 1
+        elif len(import_names) == 1:
+            stats[True] += 1
+        # If there's a match but there's other imports, don't count it
+
         with db.begin():
             db.execute(
                 database.python_imports.delete()
@@ -134,11 +163,17 @@ def main():
 
         # List versions
         done_projects = 0
+        stats = {True: 0, False: 0}
         for project_name, versions in iter_project_versions(db):
-            process_versions(project_name, versions)
+            process_versions(project_name, versions, stats)
             done_projects += 1
             if done_projects % 100 == 0:
                 logger.info("%d / %d", done_projects, total_projects)
+
+        logger.info(
+            "total: %d, name matching import: %d, not matching: %d",
+            total_projects, stats[True], stats[False],
+        )
 
 
 if __name__ == '__main__':
