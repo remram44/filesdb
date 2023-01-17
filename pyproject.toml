@@ -2,7 +2,7 @@
 name = "filesdb"
 version = "0.1.0"
 description = "File database for package manager"
-readme = "README.rst"
+readme = "README.md"
 license = "MIT"
 
 authors = [
