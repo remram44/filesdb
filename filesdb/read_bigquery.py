@@ -5,7 +5,7 @@ is the only way to get recent updates, bulk data, and some fields like download
 counts.
 
 This script allows you to import a CSV exported from BigQuery into the
-database.
+database, or read from BigQuery directly over the API.
 
 Use this SQL query on BigQuery:
 
@@ -15,7 +15,7 @@ Use this SQL query on BigQuery:
         path,
         python_version, packagetype,
         md5_digest, sha256_digest
-    FROM `the-psf.pypi.distribution_metadata`
+    FROM `bigquery-public-data.pypi.distribution_metadata`
     WHERE upload_time > :last_upload_time
     ORDER BY upload_time ASC
 """
@@ -108,7 +108,7 @@ def main():
                 path,
                 python_version, packagetype,
                 md5_digest, sha256_digest
-            FROM `the-psf.pypi.distribution_metadata`
+            FROM `bigquery-public-data.pypi.distribution_metadata`
             WHERE upload_time > "{time}"
             ORDER BY upload_time ASC
         '''.format(
