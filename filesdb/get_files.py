@@ -334,6 +334,7 @@ def iter_project_versions(db, start_from=None):
         FROM project_versions
         WHERE project_name > :project
             OR (project_name = :project AND version > :version)
+        LIMIT 1000;
     '''
 
     current_project_name = None
