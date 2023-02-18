@@ -248,7 +248,7 @@ async def process_versions(http_session, project_name, versions):
             {'project': project_name, 'version': latest_version},
         ).one()
         if is_indexed:
-            logger.info("%r %s is indexed, skipping", project_name, latest_version)
+            logger.debug("%r %s is indexed, skipping", project_name, latest_version)
             return
 
         # List downloads

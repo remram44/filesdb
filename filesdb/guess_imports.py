@@ -33,7 +33,7 @@ def process_versions(project_name, versions):
             {'project': project_name, 'version': latest_version},
         ).one()
         if is_guessed:
-            logger.info("%r %s is guessed, skipping", project_name, latest_version)
+            logger.debug("%r %s is guessed, skipping", project_name, latest_version)
             return
 
         # Find download
