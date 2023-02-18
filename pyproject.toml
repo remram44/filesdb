@@ -21,18 +21,27 @@ classifiers = [
 python = "^3.8"
 aiohttp = "^3.7.4"
 Flask = "^2.2"
+opentelemetry-api = "*"
+setuptools = "*"
 SQLAlchemy = "^1.4.11"
 
 google-cloud-bigquery = {version = "*", optional = true}
 uWSGI = {version = "*", optional = true}
-setuptools = "*"
+
+[tool.poetry.group.otel.dependencies]
+opentelemetry-distro = "*"
+opentelemetry-sdk = "*"
+
+[tool.poetry.group.otel-jaeger.dependencies]
+opentelemetry-exporter-jaeger = "*"
+protobuf = "<3.20"
+
+[tool.poetry.group.dev.dependencies]
+flake8 = "*"
 
 [tool.poetry.extras]
 bigquery = ["google-cloud-bigquery"]
 uwsgi = ["uWSGI"]
-
-[tool.poetry.dev-dependencies]
-flake8 = "*"
 
 [build-system]
 requires = ["poetry-core>=1.0.0"]
