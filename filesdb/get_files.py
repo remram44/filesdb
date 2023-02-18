@@ -7,6 +7,7 @@ import contextlib
 import hashlib
 import itertools
 import logging
+from opentelemetry import trace
 import os
 from pkg_resources import parse_version
 import re
@@ -32,6 +33,9 @@ WHEEL_METADATA_MAX_BYTES = 50_000  # 50 KB
 
 
 logger = logging.getLogger('filesdb.get_files')
+
+
+tracer = trace.get_tracer('filesdb.guess_imports')
 
 
 def check_top_level(filename, project_name):
@@ -328,7 +332,7 @@ async def process_versions(http_session, project_name, versions):
                 )
 
 
-def iter_project_versions(db, start_from=None):
+def iter_project_versions_inner(db, start_from=None):
     query = '''\
         SELECT project_name, version
         FROM project_versions
@@ -361,6 +365,19 @@ def iter_project_versions(db, start_from=None):
 
     if versions:
         yield current_project_name, versions
+
+
+def iter_project_versions(db, start_from=None):
+    generator = iter_project_versions_inner(db, start_from)
+    while True:
+        with tracer.start_as_current_span('iter_project_versions.chunk') as span:
+            try:
+                project_name, versions = next(generator)
+            except StopIteration:
+                break
+            span.set_attribute('project', project_name)
+            span.set_attribute('nb_versions', len(versions))
+        yield project_name, versions
 
 
 async def amain(start_from):
