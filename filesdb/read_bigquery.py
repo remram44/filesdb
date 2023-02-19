@@ -23,6 +23,7 @@ Use this SQL query on BigQuery:
 import csv
 from datetime import datetime
 import logging
+from opentelemetry import trace
 import os
 import re
 import sys
@@ -32,6 +33,9 @@ from .utils import normalize_project_name
 
 
 logger = logging.getLogger('filesdb.read_bigquery')
+
+
+tracer = trace.get_tracer('filesdb.guess_imports')
 
 
 class BatchInserter(object):
@@ -51,14 +55,16 @@ class BatchInserter(object):
 
             for dep in self.dependencies:
                 dep.flush()
-            self.db.execute(self.query.values(values))
+            with tracer.start_as_current_span('batchinsert', attributes={'size': len(values)}):
+                self.db.execute(self.query.values(values))
 
     def flush(self):
         if self.values:
             for dep in self.dependencies:
                 dep.flush()
 
-            self.db.execute(self.query.values(self.values))
+            with tracer.start_as_current_span('batchinsert', attributes={'size': len(self.values)}):
+                self.db.execute(self.query.values(self.values))
             self.values = []
 
 
@@ -100,23 +106,24 @@ def main():
 
         from google.cloud import bigquery
 
-        client = bigquery.Client()
-        query = '''\
-            SELECT
-                name, version,
-                upload_time, filename, size,
-                path,
-                python_version, packagetype,
-                md5_digest, sha256_digest
-            FROM `bigquery-public-data.pypi.distribution_metadata`
-            WHERE upload_time > "{time}"
-            ORDER BY upload_time ASC
-        '''.format(
-            time=from_time.strftime('%Y-%m-%d %H:%M:%S')
-        )
-        job = client.query(query)
-        total_rows = sum(1 for _ in job.result())
-        iterator = job.result()
+        with tracer.start_as_current_span('bigquery.request'):
+            client = bigquery.Client()
+            query = '''\
+                SELECT
+                    name, version,
+                    upload_time, filename, size,
+                    path,
+                    python_version, packagetype,
+                    md5_digest, sha256_digest
+                FROM `bigquery-public-data.pypi.distribution_metadata`
+                WHERE upload_time > "{time}"
+                ORDER BY upload_time ASC
+            '''.format(
+                time=from_time.strftime('%Y-%m-%d %H:%M:%S')
+            )
+            job = client.query(query)
+            total_rows = sum(1 for _ in job.result())
+            iterator = job.result()
         read_data(iterator, total_rows)
     else:
         print(
