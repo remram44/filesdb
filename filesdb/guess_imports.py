@@ -72,6 +72,7 @@ def process_versions(project_name, versions):
                         import_name = filename[:-3]
                     import_names.add(import_name)
         with tracer.start_as_current_span('process_versions.record'):
+            # TODO: Doing one transaction for each package is slow, better to batch
             with db.begin():
                 db.execute(
                     database.python_imports.delete()
