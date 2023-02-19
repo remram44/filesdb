@@ -140,12 +140,13 @@ def process_archive(db, project_name, download, filename):
                     and re.match(r'^[^\\/]+\.dist-info[\\/]METADATA$', member)
                 ):
                     with arch.open(member) as fp:
-                        process_wheel_metadata(
-                            db,
-                            project_name,
-                            download['name'],
-                            fp,
-                        )
+                        with tracer.start_as_current_span('process_wheel_metadata', attributes={'download': download['name']}):
+                            process_wheel_metadata(
+                                db,
+                                project_name,
+                                download['name'],
+                                fp,
+                            )
                     continue
                 elif (
                     '.dist-info/' in member
@@ -234,102 +235,106 @@ def process_archive(db, project_name, download, filename):
 
 @retry(3, logger)
 async def process_versions(http_session, project_name, versions):
-    latest_version = max(versions, key=parse_version)
-
-    with database.connect() as db:
-        # See if we have files for any downloads of the latest version
-        is_indexed, = db.execute(
-            '''\
-                SELECT
-                    EXISTS (
-                        SELECT name
-                        FROM downloads
-                        WHERE project_name = :project
-                            AND project_version = :version
-                            AND indexed IS NOT NULL
-                    ) AS is_indexed;
-            ''',
-            {'project': project_name, 'version': latest_version},
-        ).one()
-        if is_indexed:
-            logger.debug("%r %s is indexed, skipping", project_name, latest_version)
-            return
-
-        # List downloads
-        downloads = db.execute(
-            sqlalchemy.select([
-                database.downloads.c.name,
-                database.downloads.c.url,
-                database.downloads.c.type,
-            ])
-            .where(database.downloads.c.project_name == project_name)
-            .where(database.downloads.c.project_version == latest_version)
-        ).fetchall()
-        downloads = list(dict(row) for row in downloads)
-        if not downloads:
-            return
-
-    # Pick a wheel
-    for download in downloads:
-        if download['type'] == 'bdist_wheel':
-            if 'python_version' not in download:
-                download['_filesdb_priority'] = 5
-            elif 'py2' in download['python_version']:
-                download['_filesdb_priority'] = 6
-            elif 'py3' in download['python_version']:
-                download['_filesdb_priority'] = 7
-            elif 'cp' in download['python_version']:
-                download['_filesdb_priority'] = 1
-            else:
-                download['_filesdb_priority'] = 4
-        elif download['type'] == 'bdist_egg':
-            download['_filesdb_priority'] = 3
-        elif download['type'] == 'sdist':
-            download['_filesdb_priority'] = 2
-        else:
-            download['_filesdb_priority'] = 0
-    download = max(downloads, key=lambda d: d['_filesdb_priority'])
-
-    with tempfile.TemporaryDirectory(prefix='filesdb_') as tmpdir:
-        # Download file
-        logger.info("Getting %s", download['url'])
-        filename = os.path.join(tmpdir, secure_filename(download['name']))
-        async with http_session.get(download['url']) as response:
-            if response.status != 200:
-                logger.warning("Download error %s: %s", response.status, download['name'])
-
-            with open(filename, 'wb') as fp:
-                async for data, _ in response.content.iter_chunks():
-                    fp.write(data)
+    with tracer.start_as_current_span('process_versions') as span:
+        latest_version = max(versions, key=parse_version)
 
         with database.connect() as db:
-            with contextlib.ExitStack() as stack:
-                transaction = stack.enter_context(db.begin())
+            # See if we have files for any downloads of the latest version
+            is_indexed, = db.execute(
+                '''\
+                    SELECT
+                        EXISTS (
+                            SELECT name
+                            FROM downloads
+                            WHERE project_name = :project
+                                AND project_version = :version
+                                AND indexed IS NOT NULL
+                        ) AS is_indexed;
+                ''',
+                {'project': project_name, 'version': latest_version},
+            ).one()
+            if is_indexed:
+                logger.debug("%r %s is indexed, skipping", project_name, latest_version)
+                return
 
-                try:
-                    result = process_archive(db, project_name, download, filename)
-                except (
-                    tarfile.TarError, zipfile.BadZipFile, zlib.error,
-                    EOFError,  # Can be raised by gzip
-                ):
-                    result = 'bad archive'
-                    logger.warning("Error reading %s as an archive", download['name'])
+            # List downloads
+            downloads = db.execute(
+                sqlalchemy.select([
+                    database.downloads.c.name,
+                    database.downloads.c.url,
+                    database.downloads.c.type,
+                ])
+                .where(database.downloads.c.project_name == project_name)
+                .where(database.downloads.c.project_version == latest_version)
+            ).fetchall()
+            downloads = list(dict(row) for row in downloads)
+            if not downloads:
+                return
 
-                if result != 'yes':
-                    logger.warning("Error: %s", result)
+        # Pick a wheel
+        for download in downloads:
+            if download['type'] == 'bdist_wheel':
+                if 'python_version' not in download:
+                    download['_filesdb_priority'] = 5
+                elif 'py2' in download['python_version']:
+                    download['_filesdb_priority'] = 6
+                elif 'py3' in download['python_version']:
+                    download['_filesdb_priority'] = 7
+                elif 'cp' in download['python_version']:
+                    download['_filesdb_priority'] = 1
+                else:
+                    download['_filesdb_priority'] = 4
+            elif download['type'] == 'bdist_egg':
+                download['_filesdb_priority'] = 3
+            elif download['type'] == 'sdist':
+                download['_filesdb_priority'] = 2
+            else:
+                download['_filesdb_priority'] = 0
+        download = max(downloads, key=lambda d: d['_filesdb_priority'])
 
-                    # Rollback transaction, start a new one
-                    with stack.pop_all():
-                        transaction.rollback()
+        with tempfile.TemporaryDirectory(prefix='filesdb_') as tmpdir:
+            with tracer.start_as_current_span('download'):
+                # Download file
+                logger.info("Getting %s", download['url'])
+                filename = os.path.join(tmpdir, secure_filename(download['name']))
+                async with http_session.get(download['url']) as response:
+                    if response.status != 200:
+                        logger.warning("Download error %s: %s", response.status, download['name'])
+
+                    with open(filename, 'wb') as fp:
+                        async for data, _ in response.content.iter_chunks():
+                            fp.write(data)
+
+            with database.connect() as db:
+                with contextlib.ExitStack() as stack:
                     transaction = stack.enter_context(db.begin())
 
-                # Mark download as indexed
-                db.execute(
-                    database.downloads.update()
-                    .where(database.downloads.c.project_name == project_name)
-                    .where(database.downloads.c.name == download['name'])
-                    .values(indexed=result)
-                )
+                    try:
+                        with tracer.start_as_current_span('process_archive', attributes={'project': project_name, 'archive': download['name']}):
+                            result = process_archive(db, project_name, download, filename)
+                    except (
+                        tarfile.TarError, zipfile.BadZipFile, zlib.error,
+                        EOFError,  # Can be raised by gzip
+                    ):
+                        result = 'bad archive'
+                        logger.warning("Error reading %s as an archive", download['name'])
+                    span.set_attribute('indexed', result)
+
+                    if result != 'yes':
+                        logger.warning("Error: %s", result)
+
+                        # Rollback transaction, start a new one
+                        with stack.pop_all():
+                            transaction.rollback()
+                        transaction = stack.enter_context(db.begin())
+
+                    # Mark download as indexed
+                    db.execute(
+                        database.downloads.update()
+                        .where(database.downloads.c.project_name == project_name)
+                        .where(database.downloads.c.name == download['name'])
+                        .values(indexed=result)
+                    )
 
 
 def iter_project_versions_inner(db, start_from=None):
@@ -391,20 +396,23 @@ async def amain(start_from):
             ),
         ) as http_session:
             # Count projects
-            total_projects, = db.execute(
-                sqlalchemy.select([functions.count()])
-                .select_from(database.projects)
-            ).one()
-
-            if start_from is None:
-                done_projects = 0
-            else:
-                # Count projects we're not processing
-                done_projects, = db.execute(
+            with tracer.start_as_current_span('count_projects') as span:
+                total_projects, = db.execute(
                     sqlalchemy.select([functions.count()])
                     .select_from(database.projects)
-                    .where(database.projects.c.name < start_from)
                 ).one()
+                span.set_attribute('nb_projects', total_projects)
+
+                if start_from is None:
+                    done_projects = 0
+                else:
+                    # Count projects we're not processing
+                    done_projects, = db.execute(
+                        sqlalchemy.select([functions.count()])
+                        .select_from(database.projects)
+                        .where(database.projects.c.name < start_from)
+                    ).one()
+                    span.set_attribute('done_projects', done_projects)
 
             # List versions
             projects = iter_project_versions(db, start_from)
